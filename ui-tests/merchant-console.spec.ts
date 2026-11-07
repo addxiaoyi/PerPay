@@ -2,12 +2,13 @@ import { expect, test } from "@playwright/test";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { createServer } from "vite";
+import { viteFixtureCache } from "./vite-cache";
 import { resolve } from "node:path";
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
   test(`main identity merchant console at ${viewport.width}px`, async ({ page }, testInfo) => {
     const root = resolve(process.cwd(), "web");
-    const server = await createServer({ root, configFile: false, plugins: [react(), tailwindcss()], resolve: { alias: { "@": resolve(root, "src") } }, server: { host: "127.0.0.1", port: 0 } });
+    const server = await createServer({ root, cacheDir: viteFixtureCache("merchant-console"), configFile: false, plugins: [react(), tailwindcss()], resolve: { alias: { "@": resolve(root, "src") } }, server: { host: "127.0.0.1", port: 0 } });
     await server.listen();
     const address = server.httpServer?.address();
     if (!address || typeof address === "string") throw new Error("merchant console fixture is unavailable");
@@ -268,7 +269,7 @@ for (const width of [390, 1280]) test(`settlement request retries once and admin
 
 async function openEditableConsole(page: import("@playwright/test").Page) {
   const root = resolve(process.cwd(), "web");
-  const server = await createServer({ root, configFile: false, plugins: [react(), tailwindcss()], resolve: { alias: { "@": resolve(root, "src") } }, server: { host: "127.0.0.1", port: 0 } });
+  const server = await createServer({ root, cacheDir: viteFixtureCache("merchant-console"), configFile: false, plugins: [react(), tailwindcss()], resolve: { alias: { "@": resolve(root, "src") } }, server: { host: "127.0.0.1", port: 0 } });
   const state = {
     role: "admin" as ConsoleRole, feeBps: 500, version: 1,
     availableCents: 12_345, frozenCents: 0, balanceVersion: 0, loseAdjustmentResponse: false,

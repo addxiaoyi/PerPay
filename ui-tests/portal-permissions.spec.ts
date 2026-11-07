@@ -2,12 +2,13 @@ import { expect, test } from "@playwright/test";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { createServer } from "vite";
+import { viteFixtureCache } from "./vite-cache";
 import { resolve } from "node:path";
 
 test.use({ actionTimeout: 10000 });
 for (const role of ["owner", "member"] as const) for (const width of [390, 1280]) {
   test(`${role} sees only its merchant at ${width}px and cannot enter admin or peer routes`, async ({ page }) => {
-    const root = resolve("web"), server = await createServer({ root, configFile: false, plugins: [react(), tailwindcss()], resolve: { alias: { "@": resolve(root, "src") } }, server: { host: "127.0.0.1", port: 0, hmr: false } });
+    const root = resolve("web"), server = await createServer({ root, cacheDir: viteFixtureCache("portal-permissions"), configFile: false, plugins: [react(), tailwindcss()], resolve: { alias: { "@": resolve(root, "src") } }, server: { host: "127.0.0.1", port: 0, hmr: false } });
     await server.listen(); const address = server.httpServer?.address();
     if (!address || typeof address === "string") throw new Error("portal fixture unavailable");
     const base = `http://127.0.0.1:${address.port}`, adminRequests: string[] = [];
@@ -47,7 +48,7 @@ for (const role of ["owner", "member"] as const) for (const width of [390, 1280]
 }
 
 test("a restored tab hides old administrator content until fresh permissions arrive", async ({ page }) => {
-  const root = resolve("web"), server = await createServer({ root, configFile: false, plugins: [react(), tailwindcss()], resolve: { alias: { "@": resolve(root, "src") } }, server: { host: "127.0.0.1", port: 0, hmr: false } });
+  const root = resolve("web"), server = await createServer({ root, cacheDir: viteFixtureCache("portal-permissions"), configFile: false, plugins: [react(), tailwindcss()], resolve: { alias: { "@": resolve(root, "src") } }, server: { host: "127.0.0.1", port: 0, hmr: false } });
   await server.listen(); const address = server.httpServer?.address();
   if (!address || typeof address === "string") throw new Error("portal fixture unavailable");
   let ordinary = false, waiting = false, release: (() => void) | undefined;

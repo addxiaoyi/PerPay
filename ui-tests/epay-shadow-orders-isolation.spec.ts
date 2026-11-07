@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
 import react from "@vitejs/plugin-react";
 import { createServer } from "vite";
+import { viteFixtureCache } from "./vite-cache";
 import { resolve } from "node:path";
 
 test("hides old merchant orders and rejects late responses when switching", async ({ page }) => {
   const root = resolve(process.cwd(), "test/fixtures/legacy-workspace");
-  const server = await createServer({ root, configFile: false, plugins: [react()], define: { "process.env.NEXT_PUBLIC_BASE_PATH": JSON.stringify("/pay") }, server: { host: "127.0.0.1", port: 0 } });
+  const server = await createServer({ root, cacheDir: viteFixtureCache("epay-shadow-orders-isolation"), configFile: false, plugins: [react()], define: { "process.env.NEXT_PUBLIC_BASE_PATH": JSON.stringify("/pay") }, server: { host: "127.0.0.1", port: 0 } });
   await server.listen();
   const address = server.httpServer?.address();
   if (!address || typeof address === "string") throw new Error("fixture server unavailable");

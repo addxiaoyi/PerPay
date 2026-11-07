@@ -2,12 +2,13 @@ import { expect, test } from "@playwright/test";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { createServer } from "vite";
+import { viteFixtureCache } from "./vite-cache";
 import { resolve } from "node:path";
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
   test(`shadow callbacks stay usable at ${viewport.width}px`, async ({ page }, testInfo) => {
     const root = resolve(process.cwd(), "test/fixtures/legacy-workspace");
-    const server = await createServer({ root, configFile: false, plugins: [react(), tailwindcss()], define: { "process.env.NEXT_PUBLIC_BASE_PATH": JSON.stringify("/pay") }, server: { host: "127.0.0.1", port: 0, strictPort: false } });
+    const server = await createServer({ root, cacheDir: viteFixtureCache("epay-shadow-callbacks"), configFile: false, plugins: [react(), tailwindcss()], define: { "process.env.NEXT_PUBLIC_BASE_PATH": JSON.stringify("/pay") }, server: { host: "127.0.0.1", port: 0, strictPort: false } });
     await server.listen();
     const address = server.httpServer?.address();
     if (!address || typeof address === "string") throw new Error("fixture server unavailable");
@@ -42,7 +43,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 
 
 test("hides previous merchant callback results and late responses after switching", async ({ page }) => {
   const root = resolve(process.cwd(), "test/fixtures/legacy-workspace");
-  const server = await createServer({ root, configFile: false, plugins: [react(), tailwindcss()], define: { "process.env.NEXT_PUBLIC_BASE_PATH": JSON.stringify("/pay") }, server: { host: "127.0.0.1", port: 0 } });
+  const server = await createServer({ root, cacheDir: viteFixtureCache("epay-shadow-callbacks"), configFile: false, plugins: [react(), tailwindcss()], define: { "process.env.NEXT_PUBLIC_BASE_PATH": JSON.stringify("/pay") }, server: { host: "127.0.0.1", port: 0 } });
   await server.listen();
   const address = server.httpServer?.address();
   if (!address || typeof address === "string") throw new Error("fixture server unavailable");

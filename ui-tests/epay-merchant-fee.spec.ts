@@ -2,12 +2,13 @@ import { expect, test } from "@playwright/test";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { createServer } from "vite";
+import { viteFixtureCache } from "./vite-cache";
 import { resolve } from "node:path";
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
   test(`merchant fee editing at ${viewport.width}px`, async ({ page }, testInfo) => {
     const root = resolve(process.cwd(), "web");
-    const server = await createServer({ root, configFile: false, plugins: [react(), tailwindcss()], resolve: { alias: { "@": resolve(root, "src") } }, server: { host: "127.0.0.1", port: 0 } });
+    const server = await createServer({ root, cacheDir: viteFixtureCache("epay-merchant-fee"), configFile: false, plugins: [react(), tailwindcss()], resolve: { alias: { "@": resolve(root, "src") } }, server: { host: "127.0.0.1", port: 0 } });
     await server.listen();
     const address = server.httpServer?.address();
     if (!address || typeof address === "string") throw new Error("fixture server unavailable");

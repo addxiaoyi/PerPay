@@ -2,12 +2,13 @@ import { expect, test } from "@playwright/test";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { createServer } from "vite";
+import { viteFixtureCache } from "./vite-cache";
 import { resolve } from "node:path";
 test.use({ actionTimeout: 10000 });
 
 for (const mode of ["admin", "merchant"] as const) for (const width of [320, 390, 1440]) {
   test(`${mode} portal uses separate navigation and scoped records at ${width}px`, async ({ page }, testInfo) => {
-    const root = resolve("web"), server = await createServer({ root, configFile: false, plugins: [react(), tailwindcss()], resolve: { alias: { "@": resolve(root, "src") } }, server: { host: "127.0.0.1", port: 0, hmr: false } });
+    const root = resolve("web"), server = await createServer({ root, cacheDir: viteFixtureCache("payment-portals"), configFile: false, plugins: [react(), tailwindcss()], resolve: { alias: { "@": resolve(root, "src") } }, server: { host: "127.0.0.1", port: 0, hmr: false } });
     await server.listen(); const address = server.httpServer?.address();
     if (!address || typeof address === "string") throw new Error("portal fixture unavailable");
     const origin = `http://127.0.0.1:${address.port}`, errors: string[] = [], requests: string[] = [];
