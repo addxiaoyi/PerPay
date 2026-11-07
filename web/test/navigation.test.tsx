@@ -321,6 +321,13 @@ describe("navigation and draft protection", () => {
     expect(view.router.state.location.pathname).toBe("/");
     expect(view.fetchMock.mock.calls.some(([request]) => request.method !== "GET")).toBe(false);
   });
+  it("does not probe merchant administration from standalone navigation", async () => {
+    const { fetchMock } = mount();
+    await screen.findByLabelText("查账有效时限（秒）");
+    expect(fetchMock.mock.calls.filter(([request]) => new URL(request.url).pathname.startsWith("/api/admin/v1/epay/"))).toEqual([]);
+    expect(screen.queryByRole("link", { name: "商户费率" })).not.toBeInTheDocument();
+  });
+
   it("uses the official account menu without duplicate branding or palette controls", async () => {
     const { container, fetchMock } = mount();
     await screen.findByLabelText("查账有效时限（秒）");

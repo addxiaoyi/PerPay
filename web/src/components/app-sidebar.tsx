@@ -2,8 +2,6 @@ import { useNavigationWorkspace } from "@/workspace";
 import { useSystemName } from "@/branding";
 import { useOptionalSystemStatus } from "@/features/system-status";
 import { useEffect, useState, type ComponentProps } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { listMerchantFees } from "@/api/epay-merchants";
 import {
   Activity,
   Bell,
@@ -13,7 +11,6 @@ import {
   ListChecks,
   Settings2,
   WalletCards,
-  Store,
 } from "lucide-react";
 import { Link } from "@/navigation";
 import { navigationSection, sidebarHref, type NavigationSection } from "@/lib/navigation-selection";
@@ -74,7 +71,6 @@ export function AppSidebar({
 }) {
   const systemName = useSystemName();
   const selection = useNavigationWorkspace();
-  const merchantFeature = useQuery({ queryKey: ["epay-merchants", null], queryFn: ({ signal }) => listMerchantFees(null, signal), retry: false, staleTime: 60_000 });
   const section = navigationSection(pathname);
   const siteMenuContext = selection.clientId ? "site:" + selection.clientId
     : section === "sites" ? "sites" : "global";
@@ -145,7 +141,7 @@ export function AppSidebar({
         <SidebarFooter className="mt-auto shrink-0">
           <nav aria-label="全局管理">
             <NavSecondary
-              items={[...items.slice(5), ...(merchantFeature.data ? [{ section: "merchants" as const, url: "/merchants", title: "商户费率", icon: Store, global: true, active: section === "merchants" }] : [])]}
+              items={items.slice(5)}
               pathname={pathname}
               notice={statusNotice ?? null}
               label="全局管理"
