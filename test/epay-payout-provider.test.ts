@@ -44,6 +44,8 @@ it("keeps Alipay transfers off by default and verifies the exact original query 
     requirePayoutProof(proof); assert.equal(proof.state, "SUCCEEDED"); assert.deepEqual(calls, ["POST", "GET"]);
     await adapter.execute({ ...lease, action: "QUERY" }, destination, new AbortController().signal);
     assert.deepEqual(calls, ["POST", "GET", "GET"]);
+    const paused = await createAlipayPayoutAdapter(options).execute({ ...lease, action: "QUERY" }, destination, new AbortController().signal);
+    assert.equal(paused.state, "SUCCEEDED", "pausing new transfers preserves original-order queries");
     wrongAmount = true;
     await assert.rejects(adapter.execute({ ...lease, action: "QUERY" }, destination, new AbortController().signal), /amount/);
     wrongAmount = false; tampered = true;

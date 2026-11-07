@@ -5,14 +5,17 @@ import { accountStatuses, payoutKinds, type PayoutAccess, type PayoutAccount, ty
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { WechatPayoutAuthorization, WechatRecipientBinding } from "./payout-wechat";
 
 type Props = { merchantId: string; role: ConsoleMerchant["role"]; session: PayoutAccess; accounts: PayoutAccount[] };
 export function PayoutAccounts({ merchantId, role, session, accounts }: Props) {
   const [selected, setSelected] = useState<PayoutAccount | null>(null);
   return <section className="space-y-5" aria-label="提现收款账户"><h3 className="font-semibold">收款账户</h3>
     {role !== "member" && session.canBind && <AccountForm merchantId={merchantId} />}
+    {role !== "member" && session.wechatAuthorization && <WechatRecipientBinding merchantId={merchantId} />}
     {accounts.length === 0 ? <p className="text-sm text-muted-foreground">尚未绑定收款账户。</p> : <ul className="divide-y">{accounts.map(account => <li key={account.id} className="flex flex-wrap items-center justify-between gap-3 py-4"><div><p className="break-all font-medium">{account.label}</p><p className="mt-1 text-sm text-muted-foreground">{accountStatuses[account.status]} · {dateText(account.createdAt)}</p>{account.reviewReference && <p className="mt-1 text-sm">审核说明：{account.reviewReference}</p>}</div>{role === "admin" && session.canReview && <Button variant="outline" onClick={() => setSelected(account)}>核对收款账户</Button>}</li>)}</ul>}
     {role === "admin" && session.canReview && selected && <AccountReview key={selected.id} merchantId={merchantId} account={selected} close={() => setSelected(null)} />}
+    {role !== "member" && session.wechatAuthorization && accounts.filter(account => account.kind === "wechat" && account.status === "APPROVED").map(account => <div className="space-y-3 rounded-lg border p-4" key={account.id}><p className="font-medium">{account.label}</p><WechatPayoutAuthorization merchantId={merchantId} accountId={account.id} /></div>)}
   </section>;
 }
 

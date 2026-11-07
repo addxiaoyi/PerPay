@@ -34,10 +34,12 @@ export function verifyAlipayPayoutQuery(lease: PayoutLease, destination: PayoutD
   const value = fields(signed.bodyBytes);
   if (value.out_biz_no !== lease.outNo || (value.app_id !== undefined && value.app_id !== account.appId) ||
       (value.payer_user_id !== undefined && value.payer_user_id !== lease.payer) || (value.payee_logon_id !== undefined && value.payee_logon_id !== destination.account)) throw new Error("payout query identity mismatch");
-  const state = value.status === "SUCCESS" ? "SUCCEEDED" : ["CLOSED", "FAIL"].includes(String(value.status)) ? "FAILED" : ["WAIT_PAY", "DEALING"].includes(String(value.status)) ? "PROCESSING" : null;
-  if (!state || value.sub_status === "REFUNDED") throw new Error("payout query state requires reconciliation");
+  const returned = value.status === "REFUND" || (value.status === "SUCCESS" && value.sub_status === "REFUNDED");
+  const state = returned ? "RETURNED" : value.status === "SUCCESS" ? "SUCCEEDED" : ["CLOSED", "FAIL"].includes(String(value.status)) ? "FAILED" : ["WAIT_PAY", "DEALING"].includes(String(value.status)) ? "PROCESSING" : null;
+  if (!state) throw new Error("payout query state requires reconciliation");
   // Some failure responses omit amount; retain the hold until a complete authoritative result is available.
   if (typeof value.trans_amount !== "string" || parseLegacyCents(value.trans_amount) !== lease.amountCents) throw new Error("payout query amount mismatch");
+  if (returned && value.refund_amount !== undefined && (typeof value.refund_amount !== "string" || parseLegacyCents(value.refund_amount) !== lease.amountCents)) throw new Error("partial payout return requires separate reconciliation");
   return proof(lease, state, value.order_id, signed.bodyBytes, now);
 }
 

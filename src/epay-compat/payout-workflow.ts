@@ -25,6 +25,8 @@ export function requestPayout(database: PayoutDatabase, access: PayoutAccess, in
     const account = payoutAccount(sql, command.accountId, access.epayMerchantId);
     if (account.status !== "APPROVED") throw new PayoutConflict("payout account is not approved");
     const channel = payoutChannel(policy, account.kind);
+    if (account.kind === "wechat" && !sql.prepare(`SELECT 1 FROM epay_wechat_payout_authorizations a JOIN epay_wechat_payout_identities i ON i.account_id=a.account_id
+      WHERE a.account_id=? AND a.merchant_id=? AND a.owner_id=i.owner_id AND a.app_id=i.app_id AND a.payer=? AND a.state='TAKING_EFFECT'`).get(account.account_id, access.epayMerchantId, channel.account)) throw new PayoutConflict("active verified WeChat authorization required");
     if (command.amountCents > channel.maxSingleCents || (account.kind === "alipay" && command.amountCents < 10)) throw new PayoutConflict("payout exceeds single transfer limit");
     if (sql.prepare("SELECT 1 FROM epay_native_settlements WHERE merchant_id=? AND request_id=?").get(access.epayMerchantId, command.requestId)) throw new PayoutConflict("manual settlement already uses request ID");
     const transaction = { write: <T>(operation: (connection: typeof sql) => T) => operation(sql), read: <T>(operation: (connection: typeof sql) => T) => operation(sql) };
@@ -73,6 +75,9 @@ export function listPayouts(database: PayoutDatabase, access: PayoutAccess, page
   return database.read(sql => {
     payoutAccess(sql, access, "read");
     const rows = sql.prepare("SELECT * FROM epay_payouts WHERE merchant_id=? ORDER BY created_at DESC,settlement_id LIMIT 21 OFFSET ?").all(access.epayMerchantId, offset) as PayoutRow[];
-    return { payouts: rows.slice(0, 20).map(publicPayout), hasNext: rows.length > 20 };
+    return { payouts: rows.slice(0, 20).map(row => {
+      const returned = sql.prepare("SELECT amount_cents,posted_at FROM epay_payout_returns WHERE settlement_id=?").get(row.settlement_id);
+      return { ...publicPayout(row), returnedCents: returned ? Number(returned.amount_cents) : 0, returnedAt: returned ? Number(returned.posted_at) : null };
+    }), hasNext: rows.length > 20 };
   });
 }

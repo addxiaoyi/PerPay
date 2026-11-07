@@ -56,6 +56,6 @@ export function paymentLabel(value: string): string {
   const refunds: Record<string, string> = { refund_hold: "退款冻结", refund_paid: "退款完成", refund_released: "退款冻结解除", partial_refund: "部分退款" };
   if (refunds[value.toLowerCase()]) return refunds[value.toLowerCase()]!;
   if (value.toLowerCase() === "legacy_synchronization") return "旧支付记录同步";
-  const labels: Record<string, string> = { pending: "待处理", pending_payment: "待支付", pending_sync: "等待同步", paid: "已支付", closed: "已关闭", refunded: "已退款", refund_processing: "退款处理中", frozen: "已冻结", issued: "已开票", failed: "失败", success: "已送达", succeeded: "已完成", payment_paid: "订单收款", manual_adjustment: "管理员余额调整", payment_manual_adjustment: "管理员余额调整", settlement_freeze: "提现冻结", settlement_paid: "提现完成", refund: "订单退款" };
+  const labels: Record<string, string> = { pending: "待处理", pending_payment: "待支付", pending_sync: "等待同步", paid: "已支付", closed: "已关闭", refunded: "已退款", refund_processing: "退款处理中", frozen: "已冻结", issued: "已开票", failed: "失败", success: "已送达", succeeded: "已完成", payment_paid: "订单收款", manual_adjustment: "管理员余额调整", payment_manual_adjustment: "管理员余额调整", settlement_freeze: "提现冻结", settlement_paid: "提现完成", payout_return: "提现款项退回", manual_payout: "提现支出", settlement_unfreeze: "提现解冻", refund: "订单退款" };
   return labels[value.toLowerCase()] ?? "待核实";
 }

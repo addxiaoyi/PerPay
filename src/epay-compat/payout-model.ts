@@ -28,7 +28,7 @@ export type PayoutRow = {
   next_at: number | bigint; last_error: string | null; response_sha256: string | null; created_at: number | bigint; updated_at: number | bigint;
 };
 export type PayoutLease = Readonly<{ id: string; merchantId: number; accountId: string; channel: PayoutChannel; payer: string; outNo: string; amountCents: number; action: "SUBMIT" | "QUERY"; token: string; until: number }>;
-export type PayoutProof = Readonly<{ outNo: string; channel: PayoutChannel; payer: string; accountId: string; amountCents: number; providerId: string; state: "PROCESSING" | "WAIT_USER_CONFIRM" | "SUCCEEDED" | "FAILED"; observedAt: number; responseSha256: string }>;
+export type PayoutProof = Readonly<{ outNo: string; channel: PayoutChannel; payer: string; accountId: string; amountCents: number; providerId: string; state: "PROCESSING" | "WAIT_USER_CONFIRM" | "SUCCEEDED" | "FAILED" | "RETURNED"; observedAt: number; responseSha256: string }>;
 
 export function payoutTime(now: number): void {
   if (!Number.isSafeInteger(now) || now < 0 || !Number.isSafeInteger(now + 86_400_000)) throw new Error("invalid payout time");

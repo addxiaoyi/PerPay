@@ -5,6 +5,7 @@ import { type Payout, type PayoutAccess, type PayoutAccount, payoutKinds } from 
 import { ConsolePagination, ConsoleQuery } from "@/components/merchant-console-state";
 import { PayoutAccounts } from "./payout-accounts";
 import { PayoutRequests } from "./payout-requests";
+import { PayoutReconciliation } from "./payout-reconciliation";
 
 export function MerchantPayouts({ merchantId, role }: { merchantId: string; role: ConsoleMerchant["role"] }) {
   const [accountPage, setAccountPage] = useState(1), [page, setPage] = useState(1);
@@ -16,6 +17,7 @@ export function MerchantPayouts({ merchantId, role }: { merchantId: string; role
       <ul className="grid gap-3 sm:grid-cols-3" aria-label="自动打款通道">{session.channels.map(channel => <li key={channel.kind} className="rounded-lg border p-4"><h3 className="font-medium">{payoutKinds[channel.kind]}</h3><p className="mt-2 text-sm">{channel.enabled ? "可申请自动提现" : "暂未开放"}</p>{channel.reason && <p className="mt-1 text-xs text-muted-foreground">{channel.reason}</p>}</li>)}</ul>
       <ConsoleQuery query={accounts}>{value => <><PayoutAccounts key={`${merchantId}:${role}`} merchantId={merchantId} role={role} session={session} accounts={value.accounts} /><ConsolePagination page={accountPage} hasNext={value.hasNext} change={setAccountPage} /></>}</ConsoleQuery>
       <ConsoleQuery query={requests}>{value => <><PayoutRequests key={`${merchantId}:${role}`} merchantId={merchantId} role={role} session={session} accounts={accounts.data?.accounts ?? []} payouts={value.payouts} /><ConsolePagination page={page} hasNext={value.hasNext} change={setPage} /></>}</ConsoleQuery>
+      {role === "admin" && session.canReview && <PayoutReconciliation merchantId={merchantId} canRun={Boolean(session.canReconcile)} />}
     </>}</ConsoleQuery>
   </section>;
 }

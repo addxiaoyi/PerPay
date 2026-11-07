@@ -196,3 +196,22 @@ it("rechecks current transfer limits at dispatch without consuming a send attemp
     assert.equal(claimPayout(f.db, policy, now + 2)?.action, "SUBMIT");
   } finally { f.close(); }
 });
+
+it("keeps a failed authorization preflight unsent and cancellable without inventing a channel failure", async () => {
+  const f = await fixture(); let sends = 0;
+  try {
+    const account = addPayoutAccount(f.db, f.cipher, owner, { ...destination, requestId: "account-request-001" }, now);
+    reviewPayoutAccount(f.db, admin, account.id, { decision: "approve", reference: "verified owner" }, now);
+    const payout = requestPayout(f.db, owner, { requestId: "payout-request-001", accountId: account.id, amountCents: 600 }, policy, now);
+    reviewPayout(f.db, admin, payout.id, { decision: "approve", reference: "approved" }, policy, now);
+    const errors: string[] = [];
+    const adapter = { payer: "2088000000000000", prepare: async () => { throw new Error("authorization revoked"); }, execute: async (lease: PayoutLease) => { sends++; return f.proof(lease, "SUCCESS", now); } };
+    assert.equal(await processPayout({ database: f.db, cipher: f.cipher, policy, adapters: { alipay: adapter }, clock: () => now, onError: code => errors.push(code) }), false);
+    assert.equal(sends, 0);
+    assert.equal(listPayouts(f.db, owner, 1).payouts[0]?.status, "READY");
+    assert.equal(Number(f.db.read(sql => sql.prepare("SELECT count(*) n FROM epay_payout_attempts").get()?.n)), 0);
+    assert.deepEqual(errors, ["payout_authorization_requires_review"]);
+    reviewPayout(f.db, admin, payout.id, { decision: "reject", reference: "cancel unsent payout" }, policy, now + 1);
+    assert.equal(f.db.read(sql => readLiveBalance(sql, 1)).availableCents, 950);
+  } finally { f.close(); }
+});

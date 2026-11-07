@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { appendAuditEvent } from "../database/identity-store.ts";
 import { finalizePayoutBalance } from "./payout-posting.ts";
 import { requirePayoutProof } from "./payout-evidence.ts";
+import { postPayoutReturn } from "./payout-reconciliation.ts";
 import { payoutChannel, payoutRow, payoutTime, type PayoutDatabase, type PayoutLease, type PayoutPolicy, type PayoutProof, type PayoutRow } from "./payout-model.ts";
 
 const LEASE_MS = 30_000;
@@ -9,7 +10,7 @@ const RETRY_MS = 60_000;
 const DAY_MS = 86_400_000;
 const CHINA_OFFSET_MS = 8 * 60 * 60 * 1000;
 
-export function claimPayout(database: PayoutDatabase, policy: PayoutPolicy, now: number): PayoutLease | null {
+export function claimPayout(database: PayoutDatabase, policy: PayoutPolicy, now: number, prepared?: ReadonlySet<string>): PayoutLease | null {
   payoutTime(now);
   return database.write(sql => {
     const candidates = sql.prepare(`SELECT p.* FROM epay_payouts p JOIN epay_payout_accounts a ON a.account_id=p.account_id AND a.merchant_id=p.merchant_id
@@ -19,6 +20,7 @@ export function claimPayout(database: PayoutDatabase, policy: PayoutPolicy, now:
     const row = candidates.find(row => {
       if (policy.channels[row.channel]?.account !== row.payer) return false;
       if (row.submitted_at !== null) return true;
+      if (prepared && !prepared.has(row.settlement_id)) return false;
       if (!policy.enabled) return false;
       const channel = payoutChannel(policy, row.channel);
       const dayStart = Math.floor((now + CHINA_OFFSET_MS) / DAY_MS) * DAY_MS - CHINA_OFFSET_MS;
@@ -63,14 +65,16 @@ export function completePayout(database: PayoutDatabase, lease: PayoutLease, pro
     if (proof.outNo !== lease.outNo || proof.channel !== lease.channel || proof.payer !== lease.payer || proof.accountId !== lease.accountId || proof.amountCents !== lease.amountCents ||
         !Number.isSafeInteger(proof.observedAt) || proof.observedAt > now || now - proof.observedAt > 60_000 ||
         !/^[A-Za-z0-9_-]{1,128}$/.test(proof.providerId) || !/^[a-f0-9]{64}$/.test(proof.responseSha256) ||
-        !["PROCESSING", "WAIT_USER_CONFIRM", "SUCCEEDED", "FAILED"].includes(proof.state) || (row.provider_id && row.provider_id !== proof.providerId)) throw new Error("payout evidence mismatch");
-    const terminal = proof.state === "SUCCEEDED" || proof.state === "FAILED";
-    sql.prepare("UPDATE epay_payout_attempts SET outcome=?,finished_at=?,response_sha256=? WHERE token=? AND outcome='STARTED'").run(proof.state, now, proof.responseSha256, lease.token);
+        !["PROCESSING", "WAIT_USER_CONFIRM", "SUCCEEDED", "FAILED", "RETURNED"].includes(proof.state) || (row.provider_id && row.provider_id !== proof.providerId)) throw new Error("payout evidence mismatch");
+    const state = proof.state === "RETURNED" ? "SUCCEEDED" : proof.state;
+    const terminal = state === "SUCCEEDED" || state === "FAILED";
+    sql.prepare("UPDATE epay_payout_attempts SET outcome=?,finished_at=?,response_sha256=? WHERE token=? AND outcome='STARTED'").run(state, now, proof.responseSha256, lease.token);
     sql.prepare("UPDATE epay_payouts SET status=?,provider_id=?,response_sha256=?,lease_token=NULL,lease_until=NULL,next_at=?,last_error=NULL,updated_at=? WHERE settlement_id=?")
-      .run(proof.state, proof.providerId, proof.responseSha256, now + RETRY_MS, now, lease.id);
+      .run(state, proof.providerId, proof.responseSha256, now + RETRY_MS, now, lease.id);
     if (terminal) {
-      finalizePayoutBalance(sql, row, proof.state === "SUCCEEDED", "payout-worker", proof.providerId, now);
-      appendAuditEvent(sql, { occurredAt: now, actorType: "SYSTEM", actorId: "payout-worker", action: proof.state === "SUCCEEDED" ? "epay.payout.succeeded" : "epay.payout.failed", outcome: "SUCCESS", subjectType: "payout", subjectId: lease.id, details: { amountCents: lease.amountCents, responseSha256: proof.responseSha256 } });
+      finalizePayoutBalance(sql, row, state === "SUCCEEDED", "payout-worker", proof.providerId, now);
+      appendAuditEvent(sql, { occurredAt: now, actorType: "SYSTEM", actorId: "payout-worker", action: state === "SUCCEEDED" ? "epay.payout.succeeded" : "epay.payout.failed", outcome: "SUCCESS", subjectType: "payout", subjectId: lease.id, details: { amountCents: lease.amountCents, responseSha256: proof.responseSha256, observedState: proof.state } });
+      if (proof.state === "RETURNED") postPayoutReturn({ read: operation => operation(sql), write: operation => operation(sql) }, lease.id, proof, now);
     }
     return true;
   });

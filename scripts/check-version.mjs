@@ -29,6 +29,7 @@ const versionSchemaMaximum = Object.freeze({
   "1.0.0-rc.9": 65,
   "1.0.0-rc.10": 66,
   "1.0.0-rc.11": 67,
+  "1.0.0-rc.12": 68,
 });
 
 export function inspectVersionFiles(root, requestedTag) {

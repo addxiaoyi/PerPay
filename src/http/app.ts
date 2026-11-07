@@ -1,6 +1,8 @@
 import { assertSiteOrder, assertSiteResource, assertSiteLedger, SITE_ADMIN_ROUTES } from "../sites/admin-scope.ts";
 import { createMerchantWorkspace } from "../epay-compat/merchant-workspace.ts";
 import { createMainMerchantConsole } from "../epay-compat/main-merchant-console.ts";
+import type { PayoutServices } from "../epay-compat/payout-routes.ts";
+import { createWechatPayoutCallback } from "../epay-compat/payout-wechat-callback.ts";
 import { authorizeMainAdmin, MerchantAccessError } from "../epay-compat/merchant-access.ts";
 import { mountEPayGateway } from "../epay-compat/gateway-runtime.ts";
 import { createShadowBalanceWorkspace } from "../epay-compat/shadow-balance-workspace.ts";
@@ -251,6 +253,7 @@ const ledgerConflictResolutionSchema = z.object({
 }).strict();
 
 export interface AppDependencies {
+  readonly payouts?: PayoutServices;
   readonly epayGateway?: { readonly app: Hono };
   readonly merchantWorkspace?: { readonly identityOrigin: string; readonly identityFetch?: typeof fetch; readonly includeMainOrders?: boolean; readonly includeShadowBalance?: boolean } | undefined;
   readonly alipayAccounts?: AlipayAccountService | undefined;
@@ -408,7 +411,8 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   });
 
   if (dependencies.merchantWorkspace) {
-    app.route("/api/merchant/epay", createMainMerchantConsole({ database: dependencies.database, masterKey: dependencies.config.masterKey, publicOrigin: dependencies.config.publicOrigin, allowAdministration: dependencies.config.epayGateway?.mode === "live" && !dependencies.demoMode, ...dependencies.merchantWorkspace }));
+    if (dependencies.payouts?.wechat) app.route("/api/merchant/epay/payouts/wechat", createWechatPayoutCallback(dependencies.payouts.wechat));
+    app.route("/api/merchant/epay", createMainMerchantConsole({ database: dependencies.database, masterKey: dependencies.config.masterKey, publicOrigin: dependencies.config.publicOrigin, allowAdministration: dependencies.config.epayGateway?.mode === "live" && !dependencies.demoMode, ...dependencies.merchantWorkspace, ...(dependencies.payouts ? { payouts: dependencies.payouts } : {}) }));
     app.route("/api/merchant/epay", createMerchantWorkspace({ database: dependencies.database, ...dependencies.merchantWorkspace }));
     if (dependencies.merchantWorkspace.includeMainOrders) {
       app.route("/api/merchant/epay", createMainOrdersWorkspace({ database: dependencies.database, masterKey: dependencies.config.masterKey, ...dependencies.merchantWorkspace }));

@@ -19,7 +19,7 @@ type Options = {
 export function createAlipayPayoutAdapter(options: Options): PayoutAdapter {
   const clock = options.clock ?? Date.now;
   return { payer: options.account.sellerId, execute: async (lease, destination, signal) => {
-    if (!options.enabled || lease.channel !== "alipay" || destination.kind !== "alipay" || lease.payer !== options.account.sellerId) throw new PayoutUnavailable("Alipay payout channel unavailable");
+    if ((!options.enabled && lease.action === "SUBMIT") || lease.channel !== "alipay" || destination.kind !== "alipay" || lease.payer !== options.account.sellerId) throw new PayoutUnavailable("Alipay payout channel unavailable");
     if (lease.amountCents < 10 || !options.appCertSn || !options.alipayRootCertSn || !options.sceneName || options.sceneReports.length === 0 || options.sceneReports.some(entry => !entry.info_type || !entry.info_content)) throw new Error("Alipay payout product configuration is incomplete");
     const fingerprint = alipaySigningFingerprint(options.privateKey);
     if (options.account.signingFingerprint !== fingerprint) throw new Error("Alipay payout signer differs");

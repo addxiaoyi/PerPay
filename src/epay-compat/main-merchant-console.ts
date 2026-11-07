@@ -19,7 +19,7 @@ import { createEnrollmentRoutes } from "./merchant-enrollment-routes.ts";
 import { createCallbackRetryRoutes } from "./callback-retry-routes.ts";
 import { createMerchantProfileRoutes } from "./merchant-profile-routes.ts";
 import { createMerchantManagementRoutes } from "./merchant-management-routes.ts";
-import { createPayoutRoutes } from "./payout-routes.ts";
+import { createPayoutRoutes, type PayoutServices } from "./payout-routes.ts";
 
 type Database = Pick<AppDatabase, "read" | "write" | "instanceId">;
 type Options = {
@@ -30,6 +30,7 @@ type Options = {
   readonly allowAdministration: boolean;
   readonly identityFetch?: typeof fetch;
   readonly clock?: () => number;
+  readonly payouts?: PayoutServices;
 };
 const TOKEN_TTL_MS = 10 * 60 * 1000;
 const MAX_BODY_BYTES = 4096;
@@ -80,7 +81,7 @@ export function createMainMerchantConsole(options: Options) {
   app.route("/portal", createPortalRoutes(options));
   app.route("/refunds", createRefundRoutes({ ...options, enabled: options.allowAdministration }));
   app.route("/settlements", createSettlementRoutes({ ...options, enabled: options.allowAdministration }));
-  app.route("/payouts", createPayoutRoutes({ ...options, enabled: options.allowAdministration }));
+  app.route("/payouts", createPayoutRoutes({ ...options, ...options.payouts, enabled: options.allowAdministration }));
   app.route("/keys", createMerchantKeyRoutes({ ...options, enabled: options.allowAdministration }));
   app.route("/merchants", createEnrollmentRoutes({ ...options, enabled: options.allowAdministration }));
   app.route("/callbacks", createCallbackRetryRoutes({ ...options, enabled: options.allowAdministration }));

@@ -9,8 +9,13 @@ import { InsufficientBalance } from "./live-balance.ts";
 import { addPayoutAccount, listPayoutAccounts, revealPayoutAccount, reviewPayoutAccount } from "./payout-accounts.ts";
 import { listPayouts, requestPayout, reviewPayout } from "./payout-workflow.ts";
 import { disabledPayoutPolicy, PayoutConflict, PayoutUnavailable, type PayoutDatabase, type PayoutPolicy } from "./payout-model.ts";
+import type { WechatPayoutService } from "./payout-wechat.ts";
+import { payoutAccess } from "./payout-model.ts";
+import { listPayoutReconciliations } from "./payout-reconciliation.ts";
+import { reconcilePayoutStatement } from "./payout-statement.ts";
 
-type Options = MerchantMutationOptions & { database: PayoutDatabase & Pick<MerchantMutationOptions["database"], "instanceId">; enabled: boolean; policy?: PayoutPolicy };
+export type PayoutServices = { policy?: PayoutPolicy; wechat?: WechatPayoutService; reconcile?: (day: string) => Promise<unknown> };
+type Options = MerchantMutationOptions & PayoutServices & { database: PayoutDatabase & Pick<MerchantMutationOptions["database"], "instanceId">; enabled: boolean };
 
 export function createPayoutRoutes(options: Options) {
   const app = new Hono(), auth = merchantMutationAuth(options, "payout"), clock = options.clock ?? Date.now;
@@ -29,6 +34,7 @@ export function createPayoutRoutes(options: Options) {
     const { access, cookie } = await auth.authenticate(context.req.raw, false);
     return context.json({ ok: true, data: { canBind: options.enabled && access.role !== "member", canReview: options.enabled && access.role === "admin",
       canRequest: options.enabled && policy.enabled && access.role !== "member", csrfToken: auth.issue(cookie, access),
+      wechatAuthorization: options.enabled && options.wechat?.enabled === true && access.role !== "member", canReconcile: options.enabled && Boolean(options.reconcile) && access.role === "admin",
       channels: (["bank", "alipay", "wechat"] as const).map(kind => ({ kind, enabled: options.enabled && policy.enabled && Boolean(policy.channels[kind]),
         maxSingleCents: policy.channels[kind]?.maxSingleCents ?? null, reason: policy.channels[kind] ? policy.enabled ? null : "平台暂未开启自动打款" : kind === "bank" ? "中国银行银企直联出款权限待核实" : "商家转账权限与接口待验收" })) } });
   });
@@ -40,14 +46,45 @@ export function createPayoutRoutes(options: Options) {
     const { access } = await auth.authenticate(context.req.raw, false);
     return context.json({ ok: true, data: listPayouts(options.database, access, Number(context.req.query("page") ?? 1)) });
   });
+  app.get("/accounts/:id/wechat", async context => {
+    const { access } = await auth.authenticate(context.req.raw, false);
+    if (!options.wechat) throw new PayoutUnavailable("WeChat authorization unavailable");
+    return context.json({ ok: true, data: options.wechat.status(access, z.uuid().parse(context.req.param("id"))) });
+  });
+  app.get("/reconciliations", async context => {
+    const { access } = await auth.authenticate(context.req.raw, false);
+    return context.json({ ok: true, data: listPayoutReconciliations(options.database, access) });
+  });
   app.post("/*", async context => {
     if (!options.enabled) return context.json({ ok: false, error: "维护期间暂不受理出款设置或提现操作。" }, 503);
-    await auth.authenticate(context.req.raw, true);
+    const preliminary = await auth.authenticate(context.req.raw, true);
+    const statement = context.req.path.endsWith("/statements");
+    if (statement) options.database.read(sql => payoutAccess(sql, preliminary.access, "admin"));
     if (!/^application\/json(?:;|$)/i.test(context.req.header("content-type") ?? "")) return context.json({ ok: false, error: "请求格式应为 JSON。" }, 415);
     let body: unknown;
-    try { body = parseStrictJson(await readBoundedBody(context.req.raw.body, 8192)); }
+    try { body = parseStrictJson(await readBoundedBody(context.req.raw.body, statement ? 524288 : 8192)); }
     catch { return context.json({ ok: false, error: "收款资料格式无效。" }, 400); }
-    const { access } = await auth.authenticate(context.req.raw, true);
+    const { access, cookie } = await auth.authenticate(context.req.raw, true);
+    if (statement) return context.json({ ok: true, data: reconcilePayoutStatement(options.database, access, body, clock()) });
+    if (context.req.path.endsWith("/reconciliations")) {
+      options.database.read(sql => payoutAccess(sql, access, "admin"));
+      const command = z.object({ day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).strict().parse(body);
+      if (!options.reconcile) throw new PayoutUnavailable("payout reconciliation unavailable");
+      return context.json({ ok: true, data: await options.reconcile(command.day) });
+    }
+    if (context.req.path.includes("/wechat/")) {
+      if (!options.wechat) throw new PayoutUnavailable("WeChat authorization unavailable");
+      if (context.req.path.endsWith("/wechat/binding/begin")) {
+        const command = z.object({ holderName: z.string() }).strict().parse(body);
+        return context.json({ ok: true, data: options.wechat.beginBinding(access, cookie, command.holderName) });
+      }
+      if (context.req.path.endsWith("/wechat/binding/complete")) {
+        const command = z.object({ state: z.string(), code: z.string() }).strict().parse(body);
+        return context.json({ ok: true, data: await options.wechat.completeBinding(access, cookie, command.state, command.code, async () => (await auth.authenticate(context.req.raw, true)).access) });
+      }
+      const grant = /\/accounts\/([a-f0-9-]{36})\/wechat\/authorize$/.exec(context.req.path);
+      if (grant) { z.object({}).strict().parse(body); return context.json({ ok: true, data: await options.wechat.authorize(access, grant[1]!) }); }
+    }
     const path = context.req.path, match = /\/accounts\/([a-f0-9-]{36})\/(review|reveal)$/.exec(path);
     if (match) {
       if (match[2] === "reveal") { z.object({}).strict().parse(body); return context.json({ ok: true, data: revealPayoutAccount(options.database, cipher, access, match[1]!, clock()) }); }
