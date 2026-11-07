@@ -1,0 +1,75 @@
+import { test, expect } from "@playwright/test";
+import { serve } from "@hono/node-server";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createApp } from "../src/http/app.ts";
+import { createConfiguredHttpServices } from "../test/http-fixture.ts";
+
+for (const width of [390, 1280]) test(`payout account review uses isolated real routes and leaves live transfers disabled at ${width}px`, async ({ page }) => {
+  const directory = mkdtempSync(join(tmpdir(), "starpay-payout-ui-"));
+  let app: ReturnType<typeof createApp> | undefined, role: "admin" | "owner" | "member" = "owner";
+  const server = serve({ hostname: "127.0.0.1", port: 0, fetch: request => app ? app.fetch(request) : new Response(null, { status: 503 }) });
+  let services: Awaited<ReturnType<typeof createConfiguredHttpServices>> | undefined;
+  try {
+    if (!server.listening) await new Promise<void>(resolve => server.once("listening", resolve));
+    const address = server.address(); if (!address || typeof address === "string") throw new Error("payout fixture unavailable");
+    const origin = `http://127.0.0.1:${address.port}`;
+    services = await createConfiguredHttpServices({ directory, publicUrl: origin, apiSecret: null, collectionCodePayload: "https://qr.alipay.com/test" });
+    services.database.write(sql => sql.exec("INSERT INTO epay_merchant_accounts VALUES(1,'隔离商户',0,1,500,0,0); INSERT INTO epay_merchant_bindings VALUES('binding','api-1','main-1',1,0,0)"));
+    const identityFetch: typeof fetch = async (input, init) => {
+      if (new Headers(init?.headers).get("cookie") !== "main_session=fixture") return Response.json({ ok: false }, { status: 401 });
+      if (new URL(String(input)).searchParams.get("merchantId") !== "main-1") return Response.json({ ok: false }, { status: 403 });
+      return Response.json({ ok: true, merchantId: "main-1", apiId: "api-1", userId: `fixture-${role}`, role });
+    };
+    app = createApp({ ...services, config: { ...services.config, basePath: "/pay", epayGateway: { mode: "live", callbackDelivery: false } }, merchantWorkspace: { identityOrigin: "http://127.0.0.1:8787", identityFetch }, startedAt: new Date() });
+    await page.context().addCookies([{ name: "main_session", value: "fixture", url: origin }]);
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`${origin}/pay/merchant/payouts?merchantId=main-1`);
+    await expect(page.getByRole("heading", { name: "收款账户与自动提现", exact: true })).toBeVisible();
+    await expect(page.getByText("中国银行银企直联出款权限待核实", { exact: true })).toBeVisible();
+    await page.getByLabel("收款户名", { exact: true }).fill("合成公司");
+    await page.getByLabel("银行账号", { exact: true }).fill("6217000000000001");
+    await page.getByLabel("收款银行及支行", { exact: true }).fill("中国银行测试支行");
+    await page.getByLabel("收款行联行号", { exact: true }).fill("104000000001");
+    await page.getByRole("button", { name: "提交账户审核", exact: true }).click();
+    await expect(page.getByText("账户已提交，等待审核。", { exact: true })).toBeVisible();
+    await expect(page.locator("body")).not.toContainText("6217000000000001");
+    await expect(page.getByRole("button", { name: "提交自动提现", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "核对收款账户", exact: true })).toHaveCount(0);
+    await page.getByLabel("收款方式", { exact: true }).click();
+    await page.getByRole("option", { name: "支付宝", exact: true }).click();
+    await page.getByLabel("收款户名", { exact: true }).fill("合成用户");
+    await page.getByLabel("支付宝账号（手机号或邮箱）", { exact: true }).fill("recipient@example.test");
+    await page.getByRole("button", { name: "提交账户审核", exact: true }).click();
+    await expect(page.getByText(/支付宝 · 合\*\*\*/)).toBeVisible();
+    await page.getByLabel("收款方式", { exact: true }).click();
+    await page.getByRole("option", { name: "微信零钱", exact: true }).click();
+    await page.getByLabel("收款户名", { exact: true }).fill("合成用户");
+    await page.getByLabel("微信收款 OpenID", { exact: true }).fill("openid-synthetic-recipient");
+    await page.getByLabel("微信应用 AppID", { exact: true }).fill("wx1234567890123456");
+    await page.getByRole("button", { name: "提交账户审核", exact: true }).click();
+    await expect(page.getByText(/微信零钱 · 合\*\*\*/)).toBeVisible();
+    role = "admin";
+    await page.goto(`${origin}/pay/admin/merchants/main-1/payouts`);
+    await page.locator("li").filter({ hasText: "中国银行测试支行" }).getByRole("button", { name: "核对收款账户", exact: true }).click();
+    await page.getByRole("button", { name: "查看完整收款资料", exact: true }).click();
+    await expect(page.getByText("6217000000000001", { exact: true })).toBeVisible();
+    await page.getByLabel("账户归属核对依据或审核说明", { exact: true }).fill("隔离测试，核对合成账户");
+    await page.getByRole("button", { name: "批准收款账户", exact: true }).click();
+    await expect(page.getByText("审核说明：隔离测试，核对合成账户", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "批准自动打款", exact: true })).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    role = "member";
+    await page.goto(`${origin}/pay/merchant/payouts?merchantId=main-1`);
+    await expect(page.getByText("审核说明：隔离测试，核对合成账户", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "提交账户审核", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "核对收款账户", exact: true })).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText("6217000000000001");
+    const state = services.database.read(sql => ({ accounts: Number(sql.prepare("SELECT count(*) n FROM epay_payout_accounts WHERE status='APPROVED'").get()?.n), payouts: Number(sql.prepare("SELECT count(*) n FROM epay_payouts").get()?.n), ledger: Number(sql.prepare("SELECT count(*) n FROM epay_balance_ledger").get()?.n) }));
+    expect(state).toEqual({ accounts: 1, payouts: 0, ledger: 0 });
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    services?.database.close(); rmSync(directory, { recursive: true, force: true });
+  }
+});

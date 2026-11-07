@@ -157,7 +157,7 @@ PerPay 使用 [MIT License](LICENSE)。第三方代码与素材说明见 [NOTICE
 [Linux Do](https://linux.do/)
 ## StarMC 支付与商户系统
 
-当前代码版本为 `1.0.0-rc.10`，schema 66（2026-11-07）。
+当前候选代码为 `1.0.0-rc.11`，schema 67；新增收款账户与自动出款框架，真实出款未开放。生产仍使用上一已验收版本。
 
 - [管理员端](https://star-web.top/pay/admin/)：全站总览、商户管理、订单、账本、退款和提现审批。
 - [商户端](https://star-web.top/pay/merchant/)：本商户概览、收款、订单、账本、申请和设置。
@@ -192,3 +192,6 @@ GitHub Actions 在 `main`、`codex/**` 推送及 PR 时运行完整检查、权�
 [开发交接](docs/starpay-handoff.md)。推送分支只运行 CI，不发布镜像或切换生产。
 
 支付验签、查单补偿、回调成功回执和接单保护见 [支付安全与恢复](docs/payment-safety.md)。
+
+新候选的收款账户绑定、审核与出款队列见 [商户自动提现](docs/merchant-payouts.md)。
+中国银行、微信和支付宝真实出款权限尚待核实，当前没有开放真实自动打款。

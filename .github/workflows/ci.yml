@@ -43,6 +43,9 @@ jobs:
       - name: Run payment confirmation and recovery checks
         run: npm run test:payments
 
+      - name: Run merchant payout safety checks
+        run: npm run test:payouts
+
       - name: Audit all locked dependencies
         run: npm audit --audit-level=high
 

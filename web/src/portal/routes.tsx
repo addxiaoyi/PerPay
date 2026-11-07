@@ -26,8 +26,8 @@ export function portalRoutes() {
       <Route path="merchant-workspace" element={<LegacyWorkspace />} />
       <Route path="merchants/:merchantId/overview" element={<PortalOverviewPage scoped />} />
       { ["orders", "notifications", "ledger"].map(kind => <Route key={kind} path={`merchants/:merchantId/${kind}`} element={<PortalRecordsPage kind={kind as "orders" | "notifications" | "ledger"} scoped />} />) }
-      { ["adjustments", "fee", "refunds", "settlements", "invoices", "keys", "profile", "members"].map(section => <Route key={section} path={`merchants/:merchantId/${section}`} element={<PortalOperationPage section={section} />} />) }
-    </> : ["collect", "refunds", "settlements", "invoices", "fee", "keys", "profile"].map(section => <Route key={section} path={section} element={<PortalOperationPage section={section} />} />)}
+      { ["adjustments", "fee", "refunds", "settlements", "payouts", "invoices", "keys", "profile", "members"].map(section => <Route key={section} path={`merchants/:merchantId/${section}`} element={<PortalOperationPage section={section} />} />) }
+    </> : ["collect", "refunds", "settlements", "invoices", "fee", "payouts", "keys", "profile"].map(section => <Route key={section} path={section} element={<PortalOperationPage section={section} />} />)}
     <Route path="*" element={<div role="alert" className="rounded-xl border p-8">页面不存在，请使用侧栏进入所需功能。</div>} />
   </Route>);
 }

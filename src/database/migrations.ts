@@ -5,6 +5,7 @@ import { EPAY_MERCHANT_KEY_SCHEMA_SQL } from "../epay-compat/merchant-key-schema
 import { EPAY_MERCHANT_ENROLLMENT_SCHEMA_SQL } from "../epay-compat/merchant-enrollment-schema.ts";
 import { ALIPAY_WEB_SCHEMA_SQL } from "../epay-compat/alipay-web-schema.ts";
 import { EPAY_CALLBACK_RETRY_SCHEMA_SQL } from "../epay-compat/callback-retry-schema.ts";
+import { EPAY_PAYOUT_SCHEMA_SQL } from "../epay-compat/payout-schema.ts";
 import { ALIPAY_ACCOUNTS_SCHEMA_SQL } from "../alipay-accounts/schema.ts";
 import { ALIPAY_ACCOUNT_DELETION_SCHEMA_SQL } from "../alipay-accounts/deletion-schema.ts";
 import { EPAY_COMPATIBILITY_SCHEMA_SQL } from "../epay-compat/schema.ts";
@@ -5222,4 +5223,5 @@ export const migrations: readonly Migration[] = [
   { version: 64, name: "epay_native_merchant_enrollment", sql: EPAY_MERCHANT_ENROLLMENT_SCHEMA_SQL },
   { version: 65, name: "epay_alipay_web_payments", sql: ALIPAY_WEB_SCHEMA_SQL },
   { version: 66, name: "epay_callback_manual_retries", sql: EPAY_CALLBACK_RETRY_SCHEMA_SQL },
+  { version: 67, name: "epay_merchant_payout_accounts_and_queue", sql: EPAY_PAYOUT_SCHEMA_SQL },
 ] as const;

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { it } from "node:test";
+import { DATABASE_COMPATIBILITY } from "../src/version.ts";
 import { AppDatabase } from "../src/database/database.ts";
 import { RuntimeSettingsStore } from "../src/settings/store.ts";
 import { RuntimeSecretCipher } from "../src/settings/crypto.ts";
@@ -35,7 +36,7 @@ it("restores both same-schema releases with the original key and preserves sourc
     assert.equal(report.oldReleaseRestored, true);
     assert.equal(report.candidateRestored, true);
     assert.equal(report.sourceUnchanged, true);
-    assert.equal(report.backup.schemaVersion, 66);
+    assert.equal(report.backup.schemaVersion, DATABASE_COMPATIBILITY.maximum);
     assert.ok(report.comparedTables > 100);
   } finally { masterKey.fill(0); rmSync(directory, { recursive: true, force: true }); }
 });

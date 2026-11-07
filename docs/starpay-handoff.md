@@ -1,5 +1,10 @@
 # StarPAY 开发交接
 
+2026-11-07 新增开发候选分支 `codex/merchant-payouts-20261107`，版本
+`1.0.0-rc.11` / schema 67。账户绑定与出款框架的完成范围和渠道前提见
+[商户自动提现](merchant-payouts.md)；尚未部署生产，真实出款默认关闭。
+以下 RC10 记录保留为已验收基线。
+
 分支 `codex/epay-compatibility-20261031` 基于 PerPay RC1，集中保存此前未提交的
 EPay 兼容、历史迁移、主站身份接入、商户与管理双端、StarPAY 品牌及权限加固。
 代码版本为 `1.0.0-rc.10`，数据库兼容上限为 schema 66。

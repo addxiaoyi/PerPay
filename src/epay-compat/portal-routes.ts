@@ -6,6 +6,7 @@ import { portalOverview, portalRecords, type PortalScope } from "./portal-read-m
 import { auditConfirmedPayments } from "./confirmation-audit.ts";
 import { auditNativeRefunds } from "./refund-audit.ts";
 import { auditNativeSettlements } from "./settlement-workflow.ts";
+import { auditPayouts } from "./payout-audit.ts";
 
 type Options = { database: Pick<AppDatabase, "read" | "instanceId">; masterKey: Uint8Array; identityOrigin: string; identityFetch?: typeof fetch; clock?: () => number };
 const kinds = ["orders", "notifications", "ledger", "refunds", "settlements"] as const;
@@ -40,7 +41,7 @@ export function createPortalRoutes(options: Options) {
           const sync = sql.prepare("SELECT value FROM system_metadata WHERE key='epay_source_sync'").get();
           const source = sync ? JSON.parse(String(sync.value)) as { ok?: boolean; appliedAt?: number } : null;
           return { observedAt: (options.clock ?? Date.now)(), sourceSync: { ok: source?.ok === true, appliedAt: source?.appliedAt ?? null },
-            payments: auditConfirmedPayments(sql), refunds: auditNativeRefunds(sql), settlements: auditNativeSettlements(sql),
+            payments: auditConfirmedPayments(sql), refunds: auditNativeRefunds(sql), settlements: auditNativeSettlements(sql), payouts: auditPayouts(sql, (options.clock ?? Date.now)()),
             channels: sql.prepare("SELECT provider,product,enabled FROM epay_channels ORDER BY channel_id").all().map(row => ({ provider: String(row.provider), product: String(row.product), enabled: Number(row.enabled) === 1 })), invoiceEnabled: false };
         }
         const rows = portalRecords(sql, cipher, scope, kind as typeof kinds[number]).filter(row =>

@@ -7,7 +7,7 @@ export type MerchantMutationOptions = {
   identityOrigin: string; publicOrigin: string; identityFetch?: typeof fetch | undefined; clock?: (() => number) | undefined;
 };
 const TTL_MS = 10 * 60 * 1000;
-export function merchantMutationAuth(options: MerchantMutationOptions, purpose: "settlement" | "merchant-key" | "merchant-management" | "callback-retry" | "merchant-profile") {
+export function merchantMutationAuth(options: MerchantMutationOptions, purpose: "settlement" | "merchant-key" | "merchant-management" | "callback-retry" | "merchant-profile" | "payout") {
   const key = Buffer.from(hkdfSync("sha256", options.masterKey, options.database.instanceId(), `perpay:${purpose}-csrf:v1`, 32));
   const clock = options.clock ?? Date.now;
   const sign = (cookie: string, merchantId: string, userId: string, expiry: number) => createHmac("sha256", key).update(JSON.stringify([cookie, merchantId, userId, expiry])).digest("base64url");

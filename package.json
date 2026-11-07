@@ -1,6 +1,6 @@
 {
   "name": "perpay",
-  "version": "1.0.0-rc.10",
+  "version": "1.0.0-rc.11",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -34,7 +34,8 @@
     "snapshot:epay": "node --experimental-strip-types src/epay-compat/snapshot-cli.ts",
     "test:ui": "playwright test",
     "test:ui:full": "playwright test --config playwright.config.ts --project full",
-    "test:payments": "node --experimental-strip-types --test test/epay-alipay-evidence.test.ts test/epay-wechat-evidence.test.ts test/epay-confirm-alipay.test.ts test/epay-confirm-wechat.test.ts test/epay-alipay-query-confirmation.test.ts test/epay-wechat-observation.test.ts test/epay-exact-wechat-order.test.ts test/epay-authenticated-order.test.ts test/epay-outbox.test.ts test/epay-callback-processor.test.ts test/epay-callback-scheduler.test.ts test/epay-main-callback.test.ts test/epay-payment-query-scheduler.test.ts test/epay-confirm-delivery-integration.test.ts test/epay-wechat-close.test.ts test/epay-gateway-readiness.test.ts test/epay-gateway-mount.test.ts test/epay-main-order-access.test.ts"
+    "test:payments": "node --experimental-strip-types --test test/epay-alipay-evidence.test.ts test/epay-wechat-evidence.test.ts test/epay-confirm-alipay.test.ts test/epay-confirm-wechat.test.ts test/epay-alipay-query-confirmation.test.ts test/epay-wechat-observation.test.ts test/epay-exact-wechat-order.test.ts test/epay-authenticated-order.test.ts test/epay-outbox.test.ts test/epay-callback-processor.test.ts test/epay-callback-scheduler.test.ts test/epay-main-callback.test.ts test/epay-payment-query-scheduler.test.ts test/epay-confirm-delivery-integration.test.ts test/epay-wechat-close.test.ts test/epay-gateway-readiness.test.ts test/epay-gateway-mount.test.ts test/epay-main-order-access.test.ts",
+    "test:payouts": "node --experimental-strip-types --test test/epay-payout-workflow.test.ts test/epay-payout-http.test.ts test/epay-payout-provider.test.ts test/epay-payout-migration.test.ts test/epay-settlement-workflow.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",

@@ -16,6 +16,7 @@ import { MerchantConsoleEnrollment } from "@/pages/merchant-console-enrollment";
 import { MerchantConsoleManagement } from "@/pages/merchant-console-management";
 import { MerchantConsoleBalanceForm } from "@/pages/merchant-console-balance-form";
 import { MerchantConsoleAdjustments } from "@/pages/merchant-console-adjustments";
+import { MerchantPayouts } from "@/pages/merchant-payouts";
 import { MerchantSummary } from "./overview";
 import { PortalRecordsPage } from "./records";
 import { portalParams, usePortal, type PortalOverview } from "./context";
@@ -37,6 +38,7 @@ export function PortalOperationPage({ section }: { section: string }) {
     {section === "settlements" && <MerchantConsoleSettlements merchantId={merchantId} role={role} requests={!admin} />}
     {section === "fee" && <MerchantConsoleFee merchantId={merchantId} role={role} />}
     {section === "keys" && <MerchantConsoleKeys merchantId={merchantId} role={role} />}
+    {section === "payouts" && <MerchantPayouts merchantId={merchantId} role={role} />}
     {section === "profile" && <MerchantConsoleProfile merchantId={merchantId} role={role} />}
     {section === "members" && <MerchantConsoleMembers merchantId={merchantId} />}
     {section === "enrollment" && <MerchantConsoleEnrollment merchantId={merchantId} role={role} />}

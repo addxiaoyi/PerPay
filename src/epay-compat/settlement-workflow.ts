@@ -8,7 +8,7 @@ import { MerchantAccessError, type authorizeMerchant } from "./merchant-access.t
 
 type Database = Pick<AppDatabase, "read" | "write">;
 type Access = Awaited<ReturnType<typeof authorizeMerchant>>;
-type Row = { settlement_id: string; request_id: string; merchant_id: bigint | number; amount_cents: bigint | number; note: string;
+type Row = { settlement_id: string; request_id: string; merchant_id: bigint | number; amount_cents: bigint | number; note: string; automatic_payout?: number | bigint;
   status: "PENDING" | "PAID" | "REJECTED"; created_by: string; reviewed_by: string | null; reference: string | null;
   created_at: bigint | number; reviewed_at: bigint | number | null };
 const text = (max: number) => z.string().trim().max(max).regex(/^[^\x00-\x1f\x7f]*$/);
@@ -26,7 +26,7 @@ function time(now: number) { if (!Number.isSafeInteger(now) || now < 0) throw ne
 function publicSettlement(row: Row) {
   return { id: row.settlement_id, requestId: row.request_id, amountCents: Number(row.amount_cents), note: row.note, status: row.status,
     createdBy: row.created_by, reviewedBy: row.reviewed_by, reference: row.reference, createdAt: Number(row.created_at),
-    reviewedAt: row.reviewed_at === null ? null : Number(row.reviewed_at) };
+    reviewedAt: row.reviewed_at === null ? null : Number(row.reviewed_at), automaticPayout: Number(row.automatic_payout ?? 0) === 1 };
 }
 function row(sql: DatabaseSync, id: string, merchantId: number) {
   const saved = sql.prepare("SELECT * FROM epay_native_settlements WHERE settlement_id=? AND merchant_id=?").get(id, merchantId) as Row | undefined;
@@ -66,6 +66,7 @@ export function decideSettlement(database: Database, access: Access, id: string,
   const command = settlementDecision.parse(input); time(now);
   return database.write(sql => {
     requireAccess(sql, access, true);
+    if (sql.prepare("SELECT 1 FROM epay_payouts WHERE settlement_id=?").get(id)) throw new SettlementConflict("automatic payout must be resolved through its original channel");
     const current = row(sql, id, access.epayMerchantId), status = command.decision === "paid" ? "PAID" : "REJECTED";
     if (current.status !== "PENDING") {
       if (current.status === status && current.reference === command.reference && current.reviewed_by === access.userId) return publicSettlement(current);
@@ -90,7 +91,7 @@ export function listSettlements(database: Database, access: Access, page: number
   if (!Number.isSafeInteger(page) || page < 1 || page > 100_000) throw new Error("invalid settlement page");
   return database.read(sql => {
     requireAccess(sql, access);
-    const rows = sql.prepare("SELECT * FROM epay_native_settlements WHERE merchant_id=? ORDER BY created_at DESC,settlement_id DESC LIMIT 21 OFFSET ?").all(access.epayMerchantId, (page - 1) * 20) as Row[];
+    const rows = sql.prepare("SELECT s.*,EXISTS(SELECT 1 FROM epay_payouts p WHERE p.settlement_id=s.settlement_id) automatic_payout FROM epay_native_settlements s WHERE merchant_id=? ORDER BY created_at DESC,settlement_id DESC LIMIT 21 OFFSET ?").all(access.epayMerchantId, (page - 1) * 20) as Row[];
     return { settlements: rows.slice(0, 20).map(publicSettlement), hasNext: rows.length > 20 };
   });
 }
