@@ -18,6 +18,7 @@ import { hasVerifiedCutoverManifest } from "./cutover-manifest.ts";
 import { inspectEPayReadiness } from "./gateway-readiness.ts";
 import { createSourceSyncRoute } from "./source-sync-route.ts";
 import { EPayPaymentQueryScheduler } from "./payment-query-scheduler.ts";
+import { auditPaymentQueries } from "./payment-query-jobs.ts";
 import { queryAndConfirmAlipaySubmission } from "./isolated-alipay-query.ts";
 import { queryOrCloseExpiredWechat } from "./wechat-close.ts";
 import { createMainOrderRoutes } from "./main-order-routes.ts";
@@ -79,7 +80,7 @@ export function createEPayRuntime(options: {
   const runtime = createIsolatedGatewayRuntime({
     ...shared,
     ...(mainOrders ? { mainOrders } : {}),
-    admitOrder: () => config.mode === "live" && configurationStatus().status === "ready",
+    admitOrder: () => readiness().status === "ready",
     gateway: {
       alipay: alipayEntry, wechat,
       alipayCallback: createIsolatedAlipayCallbackRoute(database),
@@ -120,6 +121,7 @@ export function createEPayRuntime(options: {
     const scheduler = runtime.health();
     if (scheduler.state !== "running" || scheduler.consecutiveFailures > 0) return { ...configured, status: "not_ready" as const, code: "epay_callbacks_unavailable" };
     if (queries.health().state !== "running") return { ...configured, status: "not_ready" as const, code: "epay_payment_queries_unavailable" };
+    if (!database.read(sql => auditPaymentQueries(sql, Date.now())).healthy) return { ...configured, status: "not_ready" as const, code: "epay_payment_recovery_delayed" };
     if (refunds.health().state !== "running" || database.read(auditNativeRefunds).inconsistent > 0) return { ...configured, status: "not_ready" as const, code: "epay_refunds_unavailable" };
     return configured;
   };

@@ -341,6 +341,7 @@ test("daily CI keeps bounded Linux checks and a separate Chromium regression job
     "npm ci --ignore-scripts",
     "npm run check",
     "npm run test:permissions",
+    "npm run test:payments",
     "npm audit --audit-level=high",
   ]);
   assert.doesNotMatch(ciWorkflowText, /windows|docker build|trivy|compose up/iu);

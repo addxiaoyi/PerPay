@@ -175,6 +175,7 @@ EPay 协议和旧订单回调归属。新开票按运营要求关闭；首笔真
 npm ci --ignore-scripts
 npm run check
 npm run test:permissions
+npm run test:payments
 npm run build
 npx playwright install chromium
 npm run test:ui -- --project core --workers=2
@@ -189,3 +190,5 @@ GitHub Actions 在 `main`、`codex/**` 推送及 PR 时运行完整检查、权�
 生产快照、截图、日志、临时探测和环境专用发布文件保留在本地，不进入公共提交。
 跨设备继续开发、仍需人工验收的范围及回滚约束见
 [开发交接](docs/starpay-handoff.md)。推送分支只运行 CI，不发布镜像或切换生产。
+
+支付验签、查单补偿、回调成功回执和接单保护见 [支付安全与恢复](docs/payment-safety.md)。

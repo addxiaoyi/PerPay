@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
 import { it } from "node:test";
 import { createV3ResponseSignature } from "../src/infrastructure/alipay/v3.ts";
 import { alipaySigningFingerprint } from "../src/epay-compat/isolated-alipay-client.ts";
@@ -9,6 +9,11 @@ import { installBalanceOpenings, planBalanceOpenings } from "../src/epay-compat/
 import { readLiveBalance } from "../src/epay-compat/live-balance.ts";
 import { verifyAlipayQueryAccount } from "../src/epay-compat/alipay-query-account.ts";
 import { accountCertificate } from "./fixtures/alipay-account-certificate.ts";
+import { AppDatabase } from "../src/database/database.ts";
+import { EPayPaymentQueryScheduler } from "../src/epay-compat/payment-query-scheduler.ts";
+import { confirmIsolatedAlipay } from "../src/epay-compat/isolated-alipay-confirmation.ts";
+import { mainOrderFixture, mainIdentity, mainInput } from "./epay-main-native-fixture.ts";
+import { createMainNativeOrder } from "../src/epay-compat/main-native-order.ts";
 
 const now = Date.now();
 const merchant = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -37,6 +42,53 @@ function response(fields: Record<string, unknown> = {}, timestamp = String(now))
   const body = JSON.stringify({ out_trade_no: "order_1", trade_no: "provider_1", trade_status: "TRADE_SUCCESS", total_amount: "1.00", seller_id: "seller", ...fields });
   return { status: 200, body: Buffer.from(body), headers: { "alipay-timestamp": timestamp, "alipay-nonce": "fixture", "alipay-signature": createV3ResponseSignature(body, timestamp, "fixture", platform.privateKey) } };
 }
+
+it("recovers a dropped notification after a query failure and restart without crediting an equal-amount peer or a duplicate callback", async () => {
+  const f = await mainOrderFixture({ appId: "app", sellerId: "seller", fingerprint: alipaySigningFingerprint(merchant.privateKey) });
+  let active = f.database, time = now + 10_000, offline = true;
+  const firstOrder = createMainNativeOrder({ ...f, identity: mainIdentity, input: { ...mainInput, amount: "1.00" }, now });
+  const peerOrder = createMainNativeOrder({ ...f, identity: { ...mainIdentity, merchantId: "main-2", apiId: "lp-2", epayMerchantId: 2 }, input: { ...mainInput, amount: "1.00" }, now });
+  active.write(sql => {
+    for (const id of [1, 2]) {
+      sql.prepare("INSERT INTO epay_balance_openings VALUES(?,'synthetic-opening',0,0,0,?,?,?)").run(id, "a".repeat(64), "b".repeat(64), now);
+      sql.prepare("INSERT INTO epay_live_balances VALUES(?,0,0,0)").run(id);
+    }
+    for (const order of [firstOrder, peerOrder]) sql.prepare("INSERT INTO epay_alipay_submissions VALUES(?,?,'UNCERTAIN',NULL,NULL,?,?)").run(order.tradeNo, randomUUID(), now, now);
+  });
+  const errors: string[] = [];
+  const scheduler = () => new EPayPaymentQueryScheduler({ database: active, clock: () => time, intervalMilliseconds: 1000, maximumPerRun: 2, onError: code => errors.push(code), query: {
+    alipay: tradeNo => queryAndConfirmAlipaySubmission({ database: active, tradeNo, privateKey: merchant.privateKey, clock: () => time, transport: { request: async () => {
+      if (offline && tradeNo === firstOrder.tradeNo) throw new Error("synthetic connection loss");
+      const body = JSON.stringify({ out_trade_no: tradeNo, trade_no: `provider_${tradeNo}`, trade_status: tradeNo === firstOrder.tradeNo ? "TRADE_SUCCESS" : "WAIT_BUYER_PAY", total_amount: "1.00", seller_id: "seller" });
+      return { status: 200, body: Buffer.from(body), headers: { "alipay-timestamp": String(time), "alipay-nonce": "fixture", "alipay-signature": createV3ResponseSignature(body, String(time), "fixture", f.platform.privateKey) } };
+    } } }),
+    wxpay: async () => { throw new Error("unexpected provider"); },
+  } });
+  try {
+    const first = scheduler();
+    assert.equal(await first.trigger(), 2);
+    await first.stop();
+    assert.deepEqual(errors, ["epay_payment_query_failed"]);
+    assert.equal(active.read(sql => readLiveBalance(sql, 1)).availableCents, 0);
+    const filename = active.read(sql => String(sql.prepare("PRAGMA database_list").get()?.file));
+    active.close();
+    active = await AppDatabase.open(filename, { masterKey: f.masterKey });
+    offline = false; time += 61_000;
+    const recovered = scheduler();
+    assert.equal(await recovered.trigger(), 2);
+    await recovered.stop();
+    const fields = { app_id: "app", seller_id: "seller", out_trade_no: firstOrder.tradeNo, trade_no: `provider_${firstOrder.tradeNo}`, trade_status: "TRADE_SUCCESS", total_amount: "1.00" };
+    const signed = sign("RSA-SHA256", Buffer.from(Object.keys(fields).sort().map(key => `${key}=${fields[key as keyof typeof fields]}`).join("&")), f.platform.privateKey).toString("base64");
+    assert.deepEqual(confirmIsolatedAlipay(active, { ...fields, sign_type: "RSA2", sign: signed }, time), { duplicate: true });
+    active.read(sql => {
+      assert.equal(readLiveBalance(sql, 1).availableCents, 95);
+      assert.equal(readLiveBalance(sql, 2).availableCents, 0);
+      assert.equal(sql.prepare("SELECT status FROM epay_orders WHERE trade_no=?").get(peerOrder.tradeNo)?.status, "PENDING");
+      assert.equal(Number(sql.prepare("SELECT count(*) n FROM epay_balance_ledger WHERE source='perpay_epay'").get()?.n), 1);
+      assert.equal(Number(sql.prepare("SELECT count(*) n FROM epay_callback_jobs").get()?.n), 1);
+    });
+  } finally { active.close(); f.close(); }
+});
 
 it("confirms authenticated queries atomically and never assigns equal amounts to another merchant", async () => {
   const fixture = await buildFixture();

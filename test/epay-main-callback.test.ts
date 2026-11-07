@@ -4,15 +4,35 @@ import { it } from "node:test";
 import { mainOrderFixture, mainIdentity, mainInput } from "./epay-main-native-fixture.ts";
 import { createMainNativeOrder } from "../src/epay-compat/main-native-order.ts";
 import { confirmAlipayPayment } from "../src/epay-compat/confirm-alipay.ts";
-import { readMainCallback } from "../src/epay-compat/main-callback.ts";
+import { deliverMainCallback, readMainCallback, type MainCallback } from "../src/epay-compat/main-callback.ts";
 import { EPayCallbackProcessor } from "../src/epay-compat/callback-processor.ts";
 import { verifyEPaySign } from "../src/epay-compat/sign.ts";
 import { createIsolatedCheckoutStatus, issueCheckoutToken } from "../src/epay-compat/isolated-checkout-status.ts";
 
+it("requires an explicit merchant acknowledgement instead of treating HTTP 200 or success text inside an error as delivery", async () => {
+  const callback: MainCallback = {
+    contract: { orderId: "order", merchantId: "merchant", apiId: "api", channel: "alipay_web", callbackId: "callback", secret: "test-only-key" },
+    fields: { pid: "api", trade_no: "provider", out_trade_no: "external", type: "alipay", name: "test", money: "1.00", trade_status: "TRADE_SUCCESS" },
+    payload: { event: "payment.paid", orderId: "order", merchantOrderId: "external", amount: "1.00", platformFee: "0.05", merchantNet: "0.95", tradeNo: "provider", paidAt: "2026-11-07T00:00:00.000Z", pid: "api", trade_no: "provider", out_trade_no: "external", type: "alipay", name: "test", money: "1.00", trade_status: "TRADE_SUCCESS" },
+    targetUrl: "https://merchant.example/notify",
+  };
+  for (const phase of ["POST", "GET"] as const) {
+    const send = async (body: string, status = 200) => deliverMainCallback({ callback, phase, now: 1_800_000_000_000, timeoutMilliseconds: 1000,
+      transport: { post: async () => ({ status, body: Buffer.from(body), contentType: null, contentEncoding: null, responseFingerprint: "", resolvedAddressesFingerprint: "", connectedAddress: "" }) } });
+    for (const body of ["", "{}", '{"ok":false}', '{"success":false}', '{"error":"order not found"}', '<html>login success</html>', "unsuccessful", '{"ok":true,"error":"storage failed"}', '{"ok":true,"ok":false}']) {
+      assert.equal((await send(body)).acknowledged, false, `${phase}: ${body}`);
+    }
+    for (const body of ["success", " SUCCESS\n", '{"ok":true}', '{"success":true}']) {
+      assert.equal((await send(body)).acknowledged, true, `${phase}: ${body}`);
+    }
+    assert.equal((await send("success", 500)).acknowledged, false);
+  }
+});
+
 it("confirms a main order atomically and delivers durable form to HMAC fallback with its original identity", async () => {
   const f = await mainOrderFixture();
   let now = 1_800_000_000_000, calls = 0;
-  const policy = { timeoutMilliseconds: 1000, leaseMilliseconds: 3000, maximumAttempts: 3, retryDelayMilliseconds: 10 };
+  const policy = { timeoutMilliseconds: 1000, leaseMilliseconds: 3000, maximumAttempts: 4, retryDelayMilliseconds: 10 };
   try {
     const created = createMainNativeOrder({ ...f, identity: mainIdentity, input: { ...mainInput, returnUrl: "https://merchant.example/return" }, now });
     const fields = { app_id: "app", seller_id: "seller", out_trade_no: created.tradeNo, trade_no: "provider-verified", trade_status: "TRADE_SUCCESS", total_amount: "1.01" };
@@ -53,7 +73,7 @@ it("confirms a main order atomically and delivers durable form to HMAC fallback 
       assert.equal(payload.merchantNet, "0.96");
       assert.equal(payload.pid, mainIdentity.apiId);
       assert.equal(request.headers["x-lightpay-signature"], `sha256=${createHmac("sha256", mainIdentity.callbackSecret).update(`${request.headers["x-lightpay-timestamp"]}\n${body}`).digest("hex")}`);
-      return { status: calls === 2 ? 503 : 200, body: Buffer.from("{}"), contentType: null, contentEncoding: null, responseFingerprint: "", resolvedAddressesFingerprint: "", connectedAddress: "" };
+      return { status: calls === 2 ? 503 : 200, body: Buffer.from(calls === 3 ? '{"ok":false}' : '{"ok":true}'), contentType: null, contentEncoding: null, responseFingerprint: "", resolvedAddressesFingerprint: "", connectedAddress: "" };
     } }) });
     assert.equal(await processor().processOne(policy), true);
     assert.equal(f.database.read(sql => sql.prepare("SELECT next_method FROM epay_callback_jobs").get()?.next_method), "GET");
@@ -61,9 +81,12 @@ it("confirms a main order atomically and delivers durable form to HMAC fallback 
     assert.equal(await processor().processOne(policy), true);
     now += 10;
     assert.equal(await processor().processOne(policy), true);
+    assert.equal(f.database.read(sql => sql.prepare("SELECT status FROM epay_callback_jobs").get()?.status), "PENDING", "HTTP success with a rejected business acknowledgement must remain retryable");
+    now += 10;
+    assert.equal(await processor().processOne(policy), true);
     assert.equal(await processor().processOne(policy), false);
     const attempts = f.database.read(sql => sql.prepare("SELECT wire_format,outcome FROM epay_callback_attempts ORDER BY attempt_number").all());
-    assert.deepEqual(attempts.map(row => [row.wire_format, row.outcome]), [["main_form", "RETRY"], ["main_json", "RETRY"], ["main_json", "SUCCESS"]]);
+    assert.deepEqual(attempts.map(row => [row.wire_format, row.outcome]), [["main_form", "RETRY"], ["main_json", "RETRY"], ["main_json", "RETRY"], ["main_json", "SUCCESS"]]);
     assert.equal(f.database.read(sql => sql.prepare("SELECT available_delta_cents FROM epay_balance_ledger").get()?.available_delta_cents), 96n);
     const status = createIsolatedCheckoutStatus(f.database, f.masterKey, () => now);
     const response = await status.request("/checkout-status", { headers: { "x-checkout-token": issueCheckoutToken(f.masterKey, f.database.instanceId(), created.tradeNo, 1, now) } });

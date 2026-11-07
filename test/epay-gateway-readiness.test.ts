@@ -108,6 +108,7 @@ it("retains manifest, callback-delivery and merchant-admission gates independent
     const runtime = createEPayRuntime({ ...f, config: { ...live, alipayCertificateFile: f.certificateFile }, publicOrigin: "https://gateway.example", basePath: "/pay", onError: assert.fail });
     try {
       assert.equal(runtime.readiness().code, "epay_callbacks_unavailable");
+      assert.equal((await runtime.app.request("/mapi.php", { method: "POST" })).status, 503, "new orders must wait for recovery workers to start");
       await runtime.start();
       assert.equal(runtime.readiness().status, "ready");
       f.database.write(sql => sql.exec("UPDATE system_metadata SET value='{\"version\":1,\"ok\":false}' WHERE key='epay_source_sync'"));

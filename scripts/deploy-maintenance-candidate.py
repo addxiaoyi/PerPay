@@ -35,6 +35,8 @@ TESTS += ['epay-wechat-close', 'epay-wechat-observation', 'epay-wechat-readonly-
 TESTS += ['epay-portal', 'base-path-http']
 TESTS += ['epay-portal-permissions', 'epay-wechat-credential-admin']
 TESTS += ['display-settings', 'created-dates-export', 'site-orders']
+TESTS += ['epay-main-callback', 'epay-payment-query-scheduler', 'epay-outbox',
+          'epay-alipay-evidence', 'epay-wechat-evidence', 'epay-confirm-alipay', 'epay-confirm-wechat']
 
 
 def require(condition, message):

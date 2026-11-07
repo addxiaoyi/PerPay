@@ -33,7 +33,8 @@
     "import:epay": "node --experimental-strip-types scripts/import-epay-mysql.mjs",
     "snapshot:epay": "node --experimental-strip-types src/epay-compat/snapshot-cli.ts",
     "test:ui": "playwright test",
-    "test:ui:full": "playwright test --config playwright.config.ts --project full"
+    "test:ui:full": "playwright test --config playwright.config.ts --project full",
+    "test:payments": "node --experimental-strip-types --test test/epay-alipay-evidence.test.ts test/epay-wechat-evidence.test.ts test/epay-confirm-alipay.test.ts test/epay-confirm-wechat.test.ts test/epay-alipay-query-confirmation.test.ts test/epay-wechat-observation.test.ts test/epay-exact-wechat-order.test.ts test/epay-authenticated-order.test.ts test/epay-outbox.test.ts test/epay-callback-processor.test.ts test/epay-callback-scheduler.test.ts test/epay-main-callback.test.ts test/epay-payment-query-scheduler.test.ts test/epay-confirm-delivery-integration.test.ts test/epay-wechat-close.test.ts test/epay-gateway-readiness.test.ts test/epay-gateway-mount.test.ts test/epay-main-order-access.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",

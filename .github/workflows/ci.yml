@@ -40,6 +40,9 @@ jobs:
       - name: Run merchant authorization isolation checks
         run: npm run test:permissions
 
+      - name: Run payment confirmation and recovery checks
+        run: npm run test:payments
+
       - name: Audit all locked dependencies
         run: npm audit --audit-level=high
 

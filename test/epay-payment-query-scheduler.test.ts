@@ -4,7 +4,7 @@ import { AppDatabase } from "../src/database/database.ts";
 import { mainOrderFixture, mainIdentity, mainInput } from "./epay-main-native-fixture.ts";
 import { createMainNativeOrder } from "../src/epay-compat/main-native-order.ts";
 import { EPayPaymentQueryScheduler } from "../src/epay-compat/payment-query-scheduler.ts";
-import { completePaymentQuery, reservePaymentQuery } from "../src/epay-compat/payment-query-jobs.ts";
+import { auditPaymentQueries, completePaymentQuery, reservePaymentQuery } from "../src/epay-compat/payment-query-jobs.ts";
 import { balanceFixture } from "./epay-live-balance-fixture.ts";
 import { installBalanceOpenings, planBalanceOpenings } from "../src/epay-compat/balance-opening.ts";
 
@@ -30,6 +30,42 @@ async function buildFixture() {
   });
   return fixture;
 }
+
+it("detects missed queries, malformed leases and sustained provider failures without changing financial records", async () => {
+  const f = await buildFixture();
+  const financialState = () => f.db.read(sql => ["epay_orders", "epay_balance_ledger", "epay_callback_jobs"].map(table => sql.prepare(`SELECT * FROM ${table}`).all()));
+  try {
+    const before = financialState();
+    assert.equal(f.db.read(sql => auditPaymentQueries(sql, 10_000)).healthy, true);
+    assert.equal(f.db.read(sql => auditPaymentQueries(sql, 130_000)).overdue, 2);
+    const job = reservePaymentQuery(f.db, 130_000)!;
+    assert.ok(job);
+    completePaymentQuery(f.db, job, "failed", 130_001);
+    const peer = reservePaymentQuery(f.db, 130_002)!;
+    completePaymentQuery(f.db, peer, "pending", 130_003);
+    assert.equal(f.db.read(sql => auditPaymentQueries(sql, 130_004)).healthy, true, "one transient failure retains the bounded retry window");
+    for (let time = 191_000; time <= 435_000; time += 61_000) {
+      for (let index = 0; index < 2; index++) {
+        const retry = reservePaymentQuery(f.db, time)!;
+        completePaymentQuery(f.db, retry, retry.tradeNo === job.tradeNo ? "failed" : "pending", time);
+      }
+    }
+    const stuck = f.db.read(sql => auditPaymentQueries(sql, 435_001));
+    assert.equal(stuck.failed, 1);
+    assert.equal(stuck.stalled, 1);
+    assert.equal(stuck.healthy, false);
+    const retry = reservePaymentQuery(f.db, 496_000)!;
+    completePaymentQuery(f.db, retry, "pending", 496_000);
+    const other = reservePaymentQuery(f.db, 496_000)!;
+    completePaymentQuery(f.db, other, "pending", 496_000);
+    assert.equal(f.db.read(sql => auditPaymentQueries(sql, 496_001)).healthy, true);
+    f.db.write(sql => sql.prepare("UPDATE system_metadata SET value=? WHERE key=?").run("{broken", "epay_payment_query:" + job.tradeNo));
+    const corrupt = f.db.read(sql => auditPaymentQueries(sql, 496_001));
+    assert.equal(corrupt.invalid, 1);
+    assert.equal(corrupt.healthy, false);
+    assert.deepEqual(financialState(), before);
+  } finally { f.close(); }
+});
 
 it("reserves channel-specific unresolved orders and records pending, failure and confirmation outcomes", async () => {
   const fixture = await buildFixture();

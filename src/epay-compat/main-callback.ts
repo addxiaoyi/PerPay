@@ -6,6 +6,7 @@ import { readMainOrderContract } from "./main-native-order.ts";
 import type { ConfirmedOrder } from "./confirmed-order.ts";
 import { assertCallbackQueryIsUnambiguous } from "./notification.ts";
 import { epaySign } from "./sign.ts";
+import { parseStrictJson } from "../http/strict-json.ts";
 
 const money = (cents: number) => `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, "0")}`;
 export function readMainCallback(sql: DatabaseSync, cipher: RuntimeSecretCipher, order: ConfirmedOrder) {
@@ -47,7 +48,19 @@ export async function deliverMainCallback(input: { callback: MainCallback; trans
     headers["x-lightpay-event"] = "payment.paid";
   } else body = new URLSearchParams({ ...callback.fields, sign: epaySign(callback.fields, callback.contract.secret), sign_type: "MD5" }).toString();
   const response = await transport.post({ targetUrl: callback.targetUrl, body: Buffer.from(body), headers, contentType: jsonPhase ? "application/json" : "application/x-www-form-urlencoded", timeoutMilliseconds: input.timeoutMilliseconds, signal: input.signal });
-  const text = response.body.toString("utf8");
-  const accepted = response.status >= 200 && response.status < 300 && (jsonPhase || (/success/i.test(text) && !/fail/i.test(text)));
+  const accepted = response.status >= 200 && response.status < 300 && merchantAcknowledged(response.body);
   return { acknowledged: accepted, status: response.status };
+}
+
+function merchantAcknowledged(body: Uint8Array): boolean {
+  const text = Buffer.from(body).toString("utf8").trim();
+  if (text.toLowerCase() === "success") return true;
+  let value: unknown;
+  try { value = parseStrictJson(body); }
+  catch { return false; }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const reply = value as Record<string, unknown>;
+  if (reply.error || (Object.hasOwn(reply, "ok") && reply.ok !== true) ||
+      (Object.hasOwn(reply, "success") && reply.success !== true)) return false;
+  return reply.ok === true || reply.success === true;
 }
