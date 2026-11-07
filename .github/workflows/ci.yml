@@ -4,7 +4,9 @@ on:
   push:
     branches:
       - main
+      - 'codex/**'
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -35,6 +37,9 @@ jobs:
       - name: Run all checks
         run: npm run check
 
+      - name: Run merchant authorization isolation checks
+        run: npm run test:permissions
+
       - name: Audit all locked dependencies
         run: npm audit --audit-level=high
 
@@ -52,6 +57,8 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npx playwright install --with-deps chromium
       - run: npm run build
+      - name: Run merchant portal permission UI checks
+        run: npx playwright test ui-tests/portal-permissions.spec.ts --project core --workers=2
       - run: npm run test:ui -- --project core --workers=2
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: failure() || cancelled()

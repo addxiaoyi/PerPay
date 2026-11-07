@@ -1,7 +1,7 @@
 openapi: 3.1.1
 info:
   title: PerPay Native API
-  version: 1.0.0-rc.1
+  version: 1.0.0-rc.10
   summary: Self-hosted collection-code payment and reconciliation API
   license:
     name: MIT
@@ -646,6 +646,10 @@ paths:
         retains only its digest. It changes if an uninitialized instance restarts. A failed
         initialization does not consume it. When enabled, a missing token is a validation error; an incorrect
         or stale token returns `403 / setup_token_invalid` without performing password work.
+        When the StarMC merchant identity integration is configured outside demo mode, the request
+        must also carry a valid StarMC superadministrator session. The server checks that identity
+        against an enabled local merchant binding and requires the returned API ID to match it;
+        merchant owners and members cannot initialize the PerPay administrator.
         A successful setup closes this endpoint permanently but does not create a session. The
         administrator must then use the regular login endpoint. The request `Origin` must exactly
         equal the configured public origin.
@@ -663,8 +667,13 @@ paths:
         '204':
           description: Administrator password stored and setup permanently closed; no session is created
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: StarMC administrator session is missing, expired, or invalid (`admin_identity_required`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
         '403':
-          description: Administrator access or request origin is not allowed, or the one-time initialization token is incorrect or stale (`setup_token_invalid`).
+          description: StarMC administrator role, request origin, or one-time setup token is not allowed (`admin_identity_required`, `origin_not_allowed`, or `setup_token_invalid`).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -9997,6 +10006,7 @@ components:
         - site_collection_required
         - site_collection_invalid
         - admin_ip_not_allowed
+        - admin_identity_required
         - admin_operation_conflict
         - refund_mark_version_conflict
         - refund_mark_not_allowed

@@ -117,7 +117,7 @@ describe("order and notification copy follows its actual source", () => {
       expect(await navigator.clipboard.readText()).toBe(merchant);
     } else {
       expect(screen.getByText(/商户订单号（业务网站）：/)).toHaveTextContent(merchant);
-      expect(screen.getByText(/客户端 ID（PerPay）：/)).toHaveTextContent(paidOrder.api_client_id);
+      expect(screen.getByText(/客户端 ID（StarPAY）：/)).toHaveTextContent(paidOrder.api_client_id);
     }
   });
 
@@ -131,14 +131,14 @@ describe("order and notification copy follows its actual source", () => {
     const view = render(facts("admin", "INFERRED"));
     for (const shape of ["admin", "reconciliation"] as const) {
       view.rerender(facts(shape, "INFERRED"));
-      expect(screen.getByText("PerPay 按金额和付款时间推断")).toBeVisible();
+      expect(screen.getByText("StarPAY 按金额和付款时间推断")).toBeVisible();
       expect(screen.queryByText("管理员人工关联")).not.toBeInTheDocument();
       view.rerender(facts(shape, "MANUAL"));
       expect(screen.getByText("管理员人工关联")).toBeVisible();
-      expect(screen.queryByText("PerPay 按金额和付款时间推断")).not.toBeInTheDocument();
+      expect(screen.queryByText("StarPAY 按金额和付款时间推断")).not.toBeInTheDocument();
       view.rerender(facts(shape, "NONE"));
       expect(screen.queryByText("管理员人工关联")).not.toBeInTheDocument();
-      expect(screen.queryByText("PerPay 按金额和付款时间推断")).not.toBeInTheDocument();
+      expect(screen.queryByText("StarPAY 按金额和付款时间推断")).not.toBeInTheDocument();
     }
   });
 
@@ -151,7 +151,7 @@ describe("order and notification copy follows its actual source", () => {
     mount(<><section aria-label="订单摘要"><OrderFacts order={paidOrder} density="comfortable" /></section><DeliveryCard detail={acknowledged} density="comfortable" /></>);
     expect(within(screen.getByRole("region", { name: "订单摘要" })).getByText("收款已确认", { exact: true })).toBeVisible();
     expect(screen.getByText("通知已确认", { exact: true })).toBeVisible();
-    expect(screen.getByText("通知确认时间（PerPay 记录）", { selector: "dt" }).nextElementSibling).toHaveTextContent("2026/10/21 18:10");
+    expect(screen.getByText("通知确认时间（StarPAY 记录）", { selector: "dt" }).nextElementSibling).toHaveTextContent("2026/10/21 18:10");
     expect(screen.getByText(/对方已返回有效确认回执/)).toBeVisible();
     expect(screen.queryByText("业务确认时间")).not.toBeInTheDocument();
   });

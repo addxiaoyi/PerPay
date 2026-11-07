@@ -12,7 +12,8 @@ import type { RuntimeSecretName } from "./model.ts";
 export type SiteSecretPurpose = "api_secret" | "webhook_secret";
 export type SiteCipherSecretName = `site:${string}:${SiteSecretPurpose}`;
 export type AlipayCipherSecretName = `alipay:${string}:private_key` | `alipay:${string}:public_key` | `alipay:${string}:key_change:${string}`;
-type CipherSecretName = RuntimeSecretName | "master_key_guard" | `provider_application_key_change:${string}` | SiteCipherSecretName | AlipayCipherSecretName;
+export type EPayCipherSecretName = `epay:merchant:${number}:api_key` | `epay:config:${string}` | `epay:snapshot:${string}:${string}:${number}` | `epay:ledger-source:${number}:${string}` | `epay:order-source:${number}:${string}` | `epay:refund-source:${number}:${string}`;
+type CipherSecretName = RuntimeSecretName | "master_key_guard" | `provider_application_key_change:${string}` | SiteCipherSecretName | AlipayCipherSecretName | EPayCipherSecretName;
 
 const CIPHER_VERSION = 1;
 const NONCE_BYTES = 12;

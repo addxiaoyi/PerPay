@@ -1,0 +1,36 @@
+import assert from "node:assert/strict";
+import { generateKeyPairSync, verify } from "node:crypto";
+import { it } from "node:test";
+import { buildAlipayTradeQuery, verifyAlipayTradeObservation } from "../src/epay-compat/alipay-query.ts";
+import { createV3ResponseSignature } from "../src/infrastructure/alipay/v3.ts";
+
+it("signs an isolated Alipay query and treats authenticated responses only as observations", () => {
+  const merchant = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const platform = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const request = buildAlipayTradeQuery("order_1", { appId: "app", privateKey: merchant.privateKey, clock: () => 1_800_000_000_000, nonceFactory: () => "nonce" });
+  assert.equal(request.method, "POST");
+  assert.equal(request.path, "/v3/alipay/trade/query");
+  assert.deepEqual(JSON.parse(request.body), { out_trade_no: "order_1" });
+  const match = /^ALIPAY-SHA256withRSA (.+),sign=(.+)$/.exec(String(request.headers.authorization));
+  assert.ok(match);
+  assert.equal(verify("RSA-SHA256", Buffer.from(`${match[1]}\nPOST\n${request.path}\n${request.body}\n`), merchant.publicKey, Buffer.from(match[2]!, "base64")), true);
+  const response = (body: string, status = 200) => ({ status, body: Buffer.from(body), headers: { "alipay-timestamp": "1800000000", "alipay-nonce": "nonce", "alipay-signature": createV3ResponseSignature(body, "1800000000", "nonce", platform.privateKey) } });
+  const input = { tradeNo: "order_1", platformKey: platform.publicKey, expectedAmountCents: 101, expectedSellerId: "seller" };
+  const body = JSON.stringify({ out_trade_no: "order_1", trade_status: "TRADE_SUCCESS" });
+  assert.deepEqual(verifyAlipayTradeObservation(response(body), input), { tradeNo: "order_1", tradeStatus: "TRADE_SUCCESS", amountMatch: "unavailable", sellerMatch: "unavailable", paymentConfirmed: false });
+  const observed = (amount: unknown, seller: unknown) => verifyAlipayTradeObservation(response(JSON.stringify({ out_trade_no: "order_1", trade_status: "TRADE_SUCCESS", total_amount: amount, seller_id: seller })), input);
+  assert.equal(observed("1.01", "seller").amountMatch, "match");
+  assert.equal(observed("1.01", "seller").sellerMatch, "match");
+  assert.equal(observed("1.02", "other").amountMatch, "mismatch");
+  assert.equal(observed("1.02", "other").sellerMatch, "mismatch");
+  assert.throws(() => observed(1.01, "seller"), /amount/);
+  assert.throws(() => observed("1.001", "seller"), /amount/);
+  assert.throws(() => verifyAlipayTradeObservation({ ...response(body), body: Buffer.from(`${body} `) }, input), /signature/);
+  assert.throws(() => verifyAlipayTradeObservation(response(body), { ...input, platformKey: merchant.publicKey }), /signature/);
+  assert.throws(() => verifyAlipayTradeObservation(response(body), { ...input, expectedCertSn: "expected-serial" }), /certificate/);
+  assert.throws(() => verifyAlipayTradeObservation(response(body, 400), input), /reconciliation/);
+  assert.throws(() => verifyAlipayTradeObservation(response('{"out_trade_no":"other","trade_status":"TRADE_SUCCESS"}'), input), /match/);
+  assert.throws(() => verifyAlipayTradeObservation(response('{"out_trade_no":"order_1","trade_status":"TRADE_SUCCESS","trade_status":"WAIT_BUYER_PAY"}'), input));
+  assert.throws(() => verifyAlipayTradeObservation(response('{"out_trade_no":"order_1"}'), input), /match/);
+  assert.throws(() => buildAlipayTradeQuery("invalid-order", { appId: "app", privateKey: merchant.privateKey }), /order number/);
+});

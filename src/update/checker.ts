@@ -90,7 +90,7 @@ export class OfficialUpdateChecker {
       method: "GET",
       headers: {
         accept: "application/vnd.github+json",
-        "user-agent": "PerPay-update-check",
+        "user-agent": "StarPAY-update-check",
         "x-github-api-version": "2022-11-28",
       },
       redirect: "error",

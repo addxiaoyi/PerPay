@@ -78,14 +78,14 @@ test.describe("mobile consecutive record rows", () => {
       await page.getByRole("button", { name: "更多订单操作", exact: true }).tap();
       await page.getByRole("menuitem", { name: "列表显示", exact: true }).tap();
       const display = page.getByRole("dialog", { name: "列表显示", exact: true });
-      await display.getByRole("checkbox", { name: "PerPay 确认时间", exact: true }).check();
+      await display.getByRole("checkbox", { name: "StarPAY 确认时间", exact: true }).check();
       await display.getByRole("button", { name: "完成", exact: true }).tap();
       await expect(display).toHaveCount(0);
       const listUrl = page.url();
       await order.getByRole("button", { name: "展开信息", exact: true }).tap();
       await expect(page).toHaveURL(listUrl);
       await expect(order.getByRole("button", { name: "收起信息", exact: true })).toHaveAttribute("aria-expanded", "true");
-      await completeText(order.getByText("PerPay 确认时间", { exact: true }));
+      await completeText(order.getByText("StarPAY 确认时间", { exact: true }));
       await order.getByRole("button", { name: "收起信息", exact: true }).tap();
       const orderTarget = await order.locator("a[data-row-link]").getAttribute("href");
       await order.click({ position: { x: 3, y: 3 } });
@@ -130,7 +130,7 @@ test.describe("mobile consecutive record rows", () => {
       await show(page, manifest.origin, "/reconciliation?tab=exceptions", textPercent);
       const exception = page.getByRole("list", { name: "账务异常", exact: true }).getByRole("listitem").first();
       await expect(exception.getByRole("link").first()).toHaveAccessibleName(/\S/);
-      await completeText(exception.getByText("PerPay 处理状态", { exact: true }));
+      await completeText(exception.getByText("StarPAY 处理状态", { exact: true }));
       await completeText(exception.locator("time").first());
       await record(page, info, { feature: "mobile-reconciliation-exception", width, textPercent });
     });

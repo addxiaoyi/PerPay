@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
 
 ARG NODE_IMAGE=node:24.22.1-alpine3.24@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53
-ARG APP_VERSION=1.0.0-rc.1
+ARG APP_VERSION=1.0.0-rc.10
 
 FROM ${NODE_IMAGE} AS dependencies
 WORKDIR /app
@@ -53,6 +53,6 @@ EXPOSE 6190
 VOLUME ["/data", "/backups", "/run/perpay-secrets"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5m --retries=3 \
-  CMD ["node", "-e", "fetch('http://127.0.0.1:6190/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+  CMD ["node", "-e", "const b=process.env.PERPAY_BASE_PATH||'/'; fetch('http://127.0.0.1:6190'+(b==='/'?'':b)+'/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
 
 CMD ["node", "dist/main.js"]

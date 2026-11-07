@@ -10,7 +10,8 @@ export type NavigationSection =
   | "reconciliation"
   | "ledger"
   | "system"
-  | "sites";
+  | "sites"
+  | "merchants";
 
 type NavigationLocation = {
   pathname: string;
@@ -33,6 +34,7 @@ const SECTION_QUERY_PARAMETERS: Record<NavigationSection, readonly string[]> = {
   settings: [],
   system: [],
   sites: [],
+  merchants: [],
 };
 
 function selectionScope(clientId: string | null): WorkspaceScope {
@@ -43,7 +45,7 @@ function selectionScope(clientId: string | null): WorkspaceScope {
 
 /** Only these pages may remember a site without changing their global API scope. */
 export function isGlobalNavigationPage(pathname: string): boolean {
-  return /^\/(?:reconciliation(?:\/[^/]+\/[^/]+)?|ledger(?:\/[^/]+)?|system|sites(?:\/(?:new|defaults))?)\/?$/.test(pathname);
+  return /^\/(?:reconciliation(?:\/[^/]+\/[^/]+)?|ledger(?:\/[^/]+)?|system|merchants|sites(?:\/(?:new|defaults))?)\/?$/.test(pathname);
 }
 
 export function navigationSelection(location: NavigationLocation): WorkspaceScope {
@@ -70,6 +72,7 @@ export function navigationSection(pathname: string): NavigationSection | null {
   }
   if (!isGlobalNavigationPage(pathname)) return null;
   if (path === "/system") return "system";
+  if (path === "/merchants") return "merchants";
   if (/^\/ledger(?:\/|$)/.test(path)) return "reconciliation";
   return path.startsWith("/reconciliation") ? "reconciliation" : "sites";
 }
@@ -101,7 +104,7 @@ function selectionSearch(search: string, clientId: string | null): string {
 }
 
 export function sidebarHref(section: NavigationSection, selection: WorkspaceScope): string {
-  if (section === "reconciliation" || section === "ledger" || section === "system" || section === "sites") {
+  if (section === "reconciliation" || section === "ledger" || section === "system" || section === "sites" || section === "merchants") {
     return "/" + section + selectionSearch("", selection.clientId);
   }
   if (section === "overview") return selection.base || "/";

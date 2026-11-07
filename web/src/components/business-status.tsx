@@ -57,7 +57,7 @@ export function StatusBadge({
 }
 
 export function paymentBasisDescription(basis: string): string | null {
-  if (basis === "INFERRED") return "PerPay 按金额和付款时间推断";
+  if (basis === "INFERRED") return "StarPAY 按金额和付款时间推断";
   if (basis === "MANUAL") return "管理员人工关联";
   return null;
 }

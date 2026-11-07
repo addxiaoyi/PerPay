@@ -22,6 +22,37 @@ const audit = {
   remoteAddressHash: "0".repeat(64),
 };
 describe("administrator IP allowlist", () => {
+  it("enforces the same allowlist on mounted admin pages and APIs", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "perpay-mounted-allowlist-"));
+    const services = await createConfiguredHttpServices({
+      directory,
+      apiSecret: null,
+      collectionCodePayload: "https://qr.alipay.com/allowlist",
+      environment: { PERPAY_BASE_PATH: "/pay", PERPAY_TRUSTED_PROXY_CIDRS: "127.0.0.1/32" },
+    });
+    const app = createApp({ ...services, startedAt: new Date() });
+    const request = (path: string, ip: string, method = "GET") => app.request(
+      "http://localhost:6190" + path,
+      { method, headers: { "x-forwarded-for": ip } },
+      { incoming: { socket: { remoteAddress: "127.0.0.1", remotePort: 1234, remoteFamily: "IPv4" } } },
+    );
+    try {
+      await services.settings.saveAdminAccess(
+        { revision: services.settings.instanceView().revision, enabled: true, cidrs: ["192.0.2.0/24"] },
+        "192.0.2.1", audit,
+      );
+      for (const path of ["/pay/admin", "/pay/admin/", "/pay/admin/assets/no.js", "/pay/api/admin/v1/session/login", "/pay/api/admin/v1/settings"]) {
+        for (const method of ["GET", "POST", "HEAD", "OPTIONS"]) {
+          assert.equal((await request(path, "198.51.100.1", method)).status, 403, `${method} ${path}`);
+        }
+      }
+      assert.equal((await request("/pay/api/admin/v1/settings", "192.0.2.1")).status, 401);
+      assert.equal((await request("/pay/healthz", "198.51.100.1")).status, 200);
+    } finally {
+      services.database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
   it("matches IPv4, IPv6 and mapped addresses and validates rules", () => {
     const mapped = createAdminAccessPolicy(["::ffff:192.0.2.0/120"]);
     assert.equal(mapped.isTrusted("192.0.2.1"), true);

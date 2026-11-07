@@ -51,7 +51,7 @@ const sample = (day: number, key: string) => createHash("sha256").update("perpay
   .digest().readUInt32BE(0) / 0x1_0000_0000;
 const beijing = (time: number) => new Date(time + 8 * 3_600_000).toISOString().slice(0, 19).replace("T", " ");
 
-export async function createPreviewDemo(options: { port?: number; now?: number; clock?: () => number; updateChecker?: Pick<OfficialUpdateChecker, "check"> } = {}) {
+export async function createPreviewDemo(options: { port?: number; now?: number; clock?: () => number; basePath?: string; updateChecker?: Pick<OfficialUpdateChecker, "check"> } = {}) {
   const port = options.port ?? 6192;
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("演示端口必须在 1024–65535 之间。");
   const capturedAt = options.now ?? Date.now();
@@ -78,6 +78,7 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
       PERPAY_DATA_DIR: join(directory, "data"),
       PERPAY_BACKUP_DIR: join(directory, "backups"),
       PERPAY_PUBLIC_URL: origin,
+      PERPAY_BASE_PATH: options.basePath ?? "/",
     });
     const db = await AppDatabase.open(config.databasePath, { masterKey: config.masterKey });
     database = db;
@@ -407,8 +408,10 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
     const preview = new Hono();
     preview.use("*", async (context, next) => {
       context.header("X-PerPay-Demo", "read-only; health=simulated");
-      const sessionAction = context.req.method === "POST" && ["/api/admin/v1/session/login", "/api/admin/v1/session/logout"].includes(context.req.path);
-      const exportRead = context.req.method === "POST" && /^\/api\/admin\/v1\/(?:sites\/[^/]+\/)?orders\/export$/.test(context.req.path);
+      const mount = config.basePath === "/" ? "" : config.basePath;
+      const path = context.req.path.startsWith(`${mount}/`) ? context.req.path.slice(mount.length) : context.req.path;
+      const sessionAction = context.req.method === "POST" && ["/api/admin/v1/session/login", "/api/admin/v1/session/logout"].includes(path);
+      const exportRead = context.req.method === "POST" && /^\/api\/admin\/v1\/(?:sites\/[^/]+\/)?orders\/export$/.test(path);
       if (!["GET", "HEAD"].includes(context.req.method) && !sessionAction && !exportRead) {
         return context.json({ error: { code: "demo_read_only", message: "当前操作不可用。" } }, 403);
       }
@@ -416,7 +419,7 @@ export async function createPreviewDemo(options: { port?: number; now?: number; 
     });
     // Replace the displayed code with plain text, so a screenshot can never initiate payment.
     // Gate through the real route first, preserving token/status checks and security headers.
-    preview.get("/api/public/v1/checkouts/:token/qr.svg", async context => {
+    preview.get(`${config.basePath === "/" ? "" : config.basePath}/api/public/v1/checkouts/:token/qr.svg`, async context => {
       const response = await app.fetch(context.req.raw);
       if (!response.ok) return response;
       const headers = new Headers(response.headers);

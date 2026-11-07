@@ -149,7 +149,7 @@ describe("secret visibility lifecycle", () => {
       const user = userEvent.setup();
       if (operation === "read") {
         await user.click(
-          screen.getByRole("button", { name: "查看PerPay API 密钥" }),
+          screen.getByRole("button", { name: "查看StarPAY API 密钥" }),
         );
       } else {
         await user.click(await recordAction("轮换 API 密钥", "API 密钥操作"));

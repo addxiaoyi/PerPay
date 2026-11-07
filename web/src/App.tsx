@@ -59,6 +59,7 @@ const globalPageTitles: Record<NavigationSection, string> = {
   ledger: "支付宝流水",
   system: "运行状态",
   sites: "业务网站",
+  merchants: "商户费率",
 };
 
 function AppShell() {
@@ -194,6 +195,8 @@ function Workspace() {
   );
 }
 export const appRoutes = createRoutesFromElements(
+  <>
+  <Route path="merchant-workspace" errorElement={<AppFailure />} lazy={async () => ({ Component: (await import("./pages/MerchantConsole")).default })} />
   <Route
     errorElement={<AppFailure />}
     loader={({ request }) => {
@@ -294,6 +297,7 @@ export const appRoutes = createRoutesFromElements(
         Component: (await import("./pages/Sites")).default,
       })}
     />
+    <Route path="merchants" lazy={async () => ({ Component: (await import("./pages/EPayMerchants")).default })} />
     <Route
       path="sites/new"
       lazy={async () => ({
@@ -400,7 +404,8 @@ export const appRoutes = createRoutesFromElements(
         </Empty>
       }
     />
-  </Route>,
+  </Route>
+  </>,
 );
 
 function AppFailure() {

@@ -1,4 +1,5 @@
 import { checkoutHelpUrl } from "../../../src/shared/checkout-help";
+import { displaySystemName } from "../../../src/shared/branding";
 import { cn } from "cn";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
@@ -58,7 +59,7 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
   useEffect(() => controller.start(), [controller]);
   const order = state.order,
     copy = checkoutCopy[state.visual];
-  const systemName = order?.display?.name ?? initial.systemName ?? "PerPay";
+  const systemName = displaySystemName(order?.display?.name ?? initial.systemName);
   const showProductName = order?.display?.show_product_name ?? initial.showProductName;
   const awaitingStartup = state.visual === "UNPAID" && !state.initialized;
   const canPay =
@@ -132,8 +133,10 @@ export function CheckoutApp({ initial }: { initial: CheckoutInitial }) {
     (showProductName === false
       ? "lg:max-w-3xl lg:px-6"
       : "lg:max-w-5xl lg:px-6 xl:max-w-6xl");
-  const reloadPath = initial.apiUrl.startsWith("/api/public/v1/checkouts/")
-    ? "/checkout/" + initial.apiUrl.slice("/api/public/v1/checkouts/".length)
+  const checkoutApiMarker = "/api/public/v1/checkouts/";
+  const markerIndex = initial.apiUrl.indexOf(checkoutApiMarker);
+  const reloadPath = markerIndex >= 0
+    ? initial.apiUrl.slice(0, markerIndex) + "/checkout/" + initial.apiUrl.slice(markerIndex + checkoutApiMarker.length)
     : "";
   const paymentHeading = (
     <CardTitle className="w-full">

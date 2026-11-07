@@ -36,8 +36,21 @@ const rawDeploymentConfigSchema = z.object({
   PERPAY_MASTER_KEY: z.string().length(MASTER_KEY_HEX_LENGTH).regex(masterKeyHexPattern).optional(),
   PERPAY_SECRETS_DIR: z.string().trim().min(1).optional(),
   PERPAY_PUBLIC_URL: z.string().trim().min(1).default("http://localhost:6190"),
+  PERPAY_BASE_PATH: z.string().trim().default("/"),
   PERPAY_TRUSTED_PROXY_CIDRS: z.string().default(""),
   PERPAY_SETUP_TOKEN_ENABLED: z.enum(["true", "false"]).default("false"),
+  PERPAY_EPAY_SHADOW_IDENTITY_ORIGIN: z.string().trim().min(1).optional(),
+  PERPAY_EPAY_SHADOW_MAIN_ORDERS: z.enum(["true", "false"]).default("false"),
+  PERPAY_EPAY_SHADOW_BALANCE: z.enum(["true", "false"]).default("false"),
+  PERPAY_EPAY_GATEWAY_MODE: z.enum(["off", "maintenance", "live"]).default("off"),
+  PERPAY_EPAY_CALLBACK_DELIVERY: z.enum(["true", "false"]).default("false"),
+  PERPAY_EPAY_ALIPAY_CHANNEL_ID: z.coerce.number().int().positive().optional(),
+  PERPAY_EPAY_ALIPAY_CERTIFICATE_FILE: z.string().trim().min(1).optional(),
+  PERPAY_EPAY_MAIN_BRIDGE_SECRET_FILE: z.string().trim().min(1).optional(),
+  PERPAY_EPAY_INVOICE_FEE_CENTS: z.string().regex(/^(0|[1-9]\d{0,8})$/).transform(Number).optional(),
+  PERPAY_EPAY_INVOICE_ENABLED: z.enum(["true", "false"]).default("false"),
+  PERPAY_EPAY_WECHAT_CREDENTIAL_ID: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
+  PERPAY_EPAY_WECHAT_SIGNING_KEY_ID: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
   // Kept as a non-Compose compatibility fallback for local health probes.
   PERPAY_BACKUP_INTERVAL_SECONDS: z.coerce
     .number()
@@ -55,10 +68,25 @@ export interface DeploymentConfig {
   readonly databasePath: string;
   readonly masterKey: Buffer;
   readonly publicOrigin: string;
+  readonly basePath: string;
   readonly secureCookies: boolean;
   readonly setupTokenEnabled: boolean;
   readonly trustedProxy: TrustedProxyPolicy;
   readonly backupIntervalMilliseconds: number;
+  readonly merchantShadowIdentityOrigin?: string | undefined;
+  readonly merchantShadowMainOrders: boolean;
+  readonly merchantShadowBalance: boolean;
+  readonly epayGateway?: {
+    readonly mode: "maintenance" | "live";
+    readonly callbackDelivery: boolean;
+    readonly alipayChannelId?: number;
+    readonly alipayCertificateFile?: string;
+    readonly mainBridgeSecretFile?: string;
+    readonly invoiceFeeCents?: number;
+    readonly invoiceEnabled?: boolean;
+    readonly wechatCredentialId?: string;
+    readonly wechatSigningKeyId?: string;
+  };
 }
 
 /** Temporary name retained while callers migrate to DeploymentConfig. */
@@ -74,7 +102,31 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Deploy
     throw new Error("configuration validation failed: PERPAY_HOST must be an IP address or localhost");
   }
 
+  const shadowOrigin = parsed.data.PERPAY_EPAY_SHADOW_IDENTITY_ORIGIN;
+  if (parsed.data.PERPAY_EPAY_SHADOW_MAIN_ORDERS === "true" && !shadowOrigin) {
+    throw new Error("configuration validation failed: EPay shadow main orders require a shadow identity origin");
+  }
+  if (parsed.data.PERPAY_EPAY_SHADOW_BALANCE === "true" && !shadowOrigin) {
+    throw new Error("configuration validation failed: EPay shadow balance requires a shadow identity origin");
+  }
+  if (shadowOrigin) {
+    let identityUrl: URL;
+    try { identityUrl = new URL(shadowOrigin); } catch { throw new Error("configuration validation failed: invalid EPay shadow identity origin"); }
+    if (!["127.0.0.1", "::1"].includes(parsed.data.PERPAY_HOST) || identityUrl.protocol !== "http:" || !["127.0.0.1", "[::1]"].includes(identityUrl.hostname) || identityUrl.username || identityUrl.password || identityUrl.pathname !== "/" || identityUrl.search || identityUrl.hash) {
+      throw new Error("configuration validation failed: EPay shadow requires loopback server and identity origins");
+    }
+  }
+
   const publicUrl = parsePublicUrl(parsed.data.PERPAY_PUBLIC_URL);
+  const basePath = parseBasePath(parsed.data.PERPAY_BASE_PATH);
+  const gatewayMode = parsed.data.PERPAY_EPAY_GATEWAY_MODE;
+  const gatewayDelivery = parsed.data.PERPAY_EPAY_CALLBACK_DELIVERY === "true";
+  if (gatewayMode === "off" && gatewayDelivery) throw new Error("EPay callback delivery requires the gateway runtime");
+  if (gatewayMode !== "off" && publicUrl.protocol !== "https:") throw new Error("EPay gateway requires an HTTPS public URL");
+  const wechatCredential = parsed.data.PERPAY_EPAY_WECHAT_CREDENTIAL_ID;
+  const wechatSigningKey = parsed.data.PERPAY_EPAY_WECHAT_SIGNING_KEY_ID;
+  if (Boolean(wechatCredential) !== Boolean(wechatSigningKey)) throw new Error("EPay WeChat credential and signing key must be configured together");
+  if (gatewayMode === "live" && (!gatewayDelivery || (!parsed.data.PERPAY_EPAY_ALIPAY_CHANNEL_ID && !wechatCredential))) throw new Error("EPay live mode requires a channel and callback delivery");
   let trustedProxy: TrustedProxyPolicy;
   try {
     trustedProxy = parseTrustedProxyPolicy(parsed.data.PERPAY_TRUSTED_PROXY_CIDRS);
@@ -117,11 +169,33 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Deploy
     databasePath: resolve(dataDir, "perpay.sqlite3"),
     masterKey,
     publicOrigin: publicUrl.origin,
+    basePath,
     secureCookies: publicUrl.protocol === "https:",
     setupTokenEnabled: parsed.data.PERPAY_SETUP_TOKEN_ENABLED === "true",
     trustedProxy,
     backupIntervalMilliseconds: parsed.data.PERPAY_BACKUP_INTERVAL_SECONDS * 1_000,
+    merchantShadowMainOrders: parsed.data.PERPAY_EPAY_SHADOW_MAIN_ORDERS === "true",
+    merchantShadowBalance: parsed.data.PERPAY_EPAY_SHADOW_BALANCE === "true",
+    ...(shadowOrigin ? { merchantShadowIdentityOrigin: shadowOrigin } : {}),
+    ...(gatewayMode === "off" ? {} : { epayGateway: {
+      mode: gatewayMode, callbackDelivery: gatewayDelivery,
+      ...(parsed.data.PERPAY_EPAY_MAIN_BRIDGE_SECRET_FILE ? { mainBridgeSecretFile: parsed.data.PERPAY_EPAY_MAIN_BRIDGE_SECRET_FILE } : {}),
+      ...(parsed.data.PERPAY_EPAY_INVOICE_FEE_CENTS === undefined ? {} : { invoiceFeeCents: parsed.data.PERPAY_EPAY_INVOICE_FEE_CENTS }),
+      ...(parsed.data.PERPAY_EPAY_INVOICE_ENABLED === "true" ? { invoiceEnabled: true } : {}),
+      ...(parsed.data.PERPAY_EPAY_ALIPAY_CHANNEL_ID ? { alipayChannelId: parsed.data.PERPAY_EPAY_ALIPAY_CHANNEL_ID } : {}),
+      ...(parsed.data.PERPAY_EPAY_ALIPAY_CERTIFICATE_FILE ? { alipayCertificateFile: parsed.data.PERPAY_EPAY_ALIPAY_CERTIFICATE_FILE } : {}),
+      ...(wechatCredential ? { wechatCredentialId: wechatCredential } : {}),
+      ...(wechatSigningKey ? { wechatSigningKeyId: wechatSigningKey } : {}),
+    } }),
   });
+}
+
+function parseBasePath(value: string): string {
+  if (value === "/") return value;
+  if (!/^\/[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~-]+)*$/.test(value) || value.split("/").some(segment => segment === "." || segment === "..")) {
+    throw new Error("configuration validation failed: PERPAY_BASE_PATH must be / or a normalized absolute path");
+  }
+  return value;
 }
 
 function resolveMasterKey(
@@ -140,7 +214,11 @@ function resolveMasterKey(
     throw new Error("configuration validation failed: set PERPAY_SECRETS_DIR or PERPAY_MASTER_KEY");
   }
   mkdirSync(secretsDirectory, { recursive: true, mode: 0o700 });
-  if (process.platform !== "win32") chmodSync(secretsDirectory, 0o700);
+  const secretsStat = lstatSync(secretsDirectory);
+  if (secretsStat.isSymbolicLink() || !secretsStat.isDirectory()) {
+    throw new Error("configuration validation failed: secrets directory must be an ordinary directory");
+  }
+  if (process.platform !== "win32" && (secretsStat.mode & 0o777) !== 0o700) chmodSync(secretsDirectory, 0o700);
   const path = resolve(secretsDirectory, "master-key");
   if (existsSync(databasePath) && lstatSync(databasePath).size > 0 && !existsSync(path)) {
     throw new Error("configuration validation failed: master-key is missing for an existing database");

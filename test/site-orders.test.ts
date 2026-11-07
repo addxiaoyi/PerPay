@@ -31,7 +31,7 @@ describe("website orders on the shared payment engine", () => {
       f.sites.update(a.clientId, { revision: 0, configuration }, audit);
       assert.equal(f.orders.publicCheckout(first.checkoutToken).display?.name, "A 的收银台");
       assert.equal(f.orders.publicCheckout(first.checkoutToken).display?.showProductName, false);
-      assert.equal(f.orders.publicCheckout(second.checkoutToken).display?.name, "PerPay");
+      assert.equal(f.orders.publicCheckout(second.checkoutToken).display?.name, "StarPAY");
     } finally { f.close(); }
   });
   it("keeps legal replays and existing order access working when paused or full", async () => {

@@ -53,17 +53,17 @@ function RelatedRecord({ item, showSite }: { item: AdminWorkItem; showSite: bool
         <span className="record-list-meta">订单摘要暂不可用</span>
         <Link
           className="list-secondary-link"
-          aria-label={"查看订单，内部订单编号（PerPay）：" + item.order_id}
+          aria-label={"查看订单，内部订单编号（StarPAY）：" + item.order_id}
           to={"/orders/" + item.order_id}
         >
-          内部订单编号（PerPay） <span className="list-code" title={item.order_id}>{item.order_id}</span>
+          内部订单编号（StarPAY） <span className="list-code" title={item.order_id}>{item.order_id}</span>
         </Link>
       </div>
     );
   }
   const externalId = item.type === "LEDGER_CONFLICT" ? item.external_event_id : null;
   const reference = externalId ?? item.ledger_entry_id ?? item.resource_id;
-  const referenceLabel = externalId ? "支付宝流水号" : item.ledger_entry_id ? "内部流水编号（PerPay）" : "提醒编号";
+  const referenceLabel = externalId ? "支付宝流水号" : item.ledger_entry_id ? "内部流水编号（StarPAY）" : "提醒编号";
   return (
     <div className="list-identity">
       <span className="record-list-meta">未关联订单</span>

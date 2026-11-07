@@ -58,7 +58,7 @@ const messages: Record<string, string> = {
     "退款标记已在其他请求中修改。请关闭窗口并刷新订单后重试，当前修改未覆盖已有记录。",
   refund_mark_not_allowed: "只有存在实收金额的已确认或争议订单可以标记退款。",
   refund_recording_retired:
-    "退款流水登记已停用，请在订单详情中使用管理员退款标记。PerPay 不执行或验证退款。",
+    "退款流水登记已停用，请在订单详情中使用管理员退款标记。StarPAY 不执行或验证退款。",
   idempotency_conflict: "该请求编号已用于不同内容，请先核对已有操作结果。",
   webhook_delivery_not_found: "找不到此通知记录，请刷新通知列表。",
   webhook_delivery_state_conflict:
@@ -81,8 +81,8 @@ export function apiErrorMessage(
   status: number | undefined,
 ): string {
   if (typeof message === "string" && /[\u3400-\u9fff]/u.test(message))
-    return message;
-  if (code && messages[code]) return messages[code].replaceAll("PerPay", () => getSystemName());
+    return message.replace(/perpay/gi, () => getSystemName());
+  if (code && messages[code]) return messages[code].replaceAll("StarPAY", () => getSystemName());
   if (!status) return "无法连接服务，请检查网络后重试。";
   if (status === 401) return "登录已过期，请重新登录。";
   if (status === 403) return "安全校验未通过，请重新登录并核对访问地址。";

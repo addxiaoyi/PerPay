@@ -71,7 +71,7 @@ describe("runtime settings controller", () => {
       collection: { codePayload: "https://qr.alipay.com/runtime-cadence" },
       advanced: unconfiguredSettings.advanced,
       backup: { intervalSeconds: 86400, keepCount: 7 },
-      display: { systemName: "PerPay", dashboardChartType: "AREA" },
+      display: { systemName: "StarPAY", dashboardChartType: "AREA" },
       activeProviderAccountKey: "primary",
     };
     const started: LedgerIngestScheduler[] = [];

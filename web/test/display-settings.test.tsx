@@ -132,7 +132,7 @@ describe("instance display settings", () => {
     await user.type(name, "新的支付");
     expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
     await user.clear(name);
-    await user.type(name, "PerPay");
+    await user.type(name, "StarPAY");
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     expect(fetchMock).not.toHaveBeenCalled();
   });

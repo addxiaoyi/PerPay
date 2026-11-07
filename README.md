@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: MIT -->
 
 <p align="center">
-  <img src="web/src/assets/favicon.svg" alt="PerPay 钱包图标" width="72" height="72">
+  <img src="web/src/assets/favicon.svg" alt="StarPAY 钱包图标" width="72" height="72">
 </p>
-<h1 align="center">PerPay</h1>
+<h1 align="center">StarPAY</h1>
 <p align="center"><strong>不用装手机监听软件，也不用签约成为支付宝商户，面向个人开发者的自托管支付系统</strong></p>
 
 <p align="center">
@@ -69,6 +69,7 @@ curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/Mashiro0619/Per
 | 配置项 | 怎么填 |
 | --- | --- |
 | `x-perpay-public-url` | 你的 HTTPS 地址，如 `https://pay.example.com`，不带路径。 |
+| `x-perpay-base-path` | 可选的统一路径前缀，如 `/pay`；会同时应用于管理端、API、收银台、静态资源和会话 Cookie。默认 `/`。 |
 | `x-perpay-trusted-proxy-cidrs` | PerPay 容器实际看到的直连代理 IP 或网段，多个用逗号分隔；HTTPS 部署必填。 |
 | `x-perpay-host-port` | 默认 `127.0.0.1:6190:6190`，只允许从宿主机访问。 |
 | `x-perpay-setup-token-enabled` | 默认 `"false"`，首次只需设置管理员密码；改为 `"true"` 后，还需输入服务器启动日志中的一次性初始化令牌。 |
@@ -154,3 +155,37 @@ PerPay 使用 [MIT License](LICENSE)。第三方代码与素材说明见 [NOTICE
 ## 友链
 
 [Linux Do](https://linux.do/)
+## StarMC 支付与商户系统
+
+当前代码版本为 `1.0.0-rc.10`，schema 66（2026-11-07）。
+
+- [管理员端](https://star-web.top/pay/admin/)：全站总览、商户管理、订单、账本、退款和提现审批。
+- [商户端](https://star-web.top/pay/merchant/)：本商户概览、收款、订单、账本、申请和设置。
+
+两端使用 StarPAY 的 React/Vite 前端和 StarMC 账户权限，保留原入口、历史记录、
+EPay 协议和旧订单回调归属。新开票按运营要求关闭；首笔真实收款闭环按用户要求
+留待正常交易后验收。页面及权限说明见 [双端说明](docs/payment-portals.md)、
+[商户隔离](docs/merchant-access-isolation.md)和[所有者与成员权限](docs/profile-permissions.md)。
+
+### 开发与持续集成
+
+使用 Node.js `24.22.1`。独立检出即可运行，不需要相邻的主站仓库或生产凭据：
+
+```sh
+npm ci --ignore-scripts
+npm run check
+npm run test:permissions
+npm run build
+npx playwright install chromium
+npm run test:ui -- --project core --workers=2
+```
+
+GitHub Actions 在 `main`、`codex/**` 推送及 PR 时运行完整检查、权限隔离回归、
+依赖审计和 Chromium 测试。权限接口与页面恢复回归使用合成商户、隔离数据库及
+主站源码夹具；不会创建真实付款、退款或余额调整。夹具来源见
+`test/fixtures/legacy-source-manifest.json`。
+
+此分支集中整理先前未提交的迁移与双端实现，是本次权限修复的构建前提。
+生产快照、截图、日志、临时探测和环境专用发布文件保留在本地，不进入公共提交。
+跨设备继续开发、仍需人工验收的范围及回滚约束见
+[开发交接](docs/starpay-handoff.md)。推送分支只运行 CI，不发布镜像或切换生产。

@@ -31,7 +31,7 @@ describe("notification signing key rotation", () => {
     const notification = await screen.findByRole("button", {
       name: "查看通知签名密钥",
     });
-    const api = screen.getByRole("button", { name: "查看PerPay API 密钥" });
+    const api = screen.getByRole("button", { name: "查看StarPAY API 密钥" });
     expect(notification.textContent).toBe("查看");
     expect(notification.className).toBe(api.className);
     expect(

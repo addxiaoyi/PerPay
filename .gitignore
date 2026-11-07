@@ -38,3 +38,10 @@ backups/
 
 # Local visual-audit evidence and private browser state
 .ui-audit/
+*.private.json
+
+# Deployment evidence and local analysis are not source releases.
+/release/
+/.codegraph/
+/.codex-shadow-check-*/
+**/__pycache__/

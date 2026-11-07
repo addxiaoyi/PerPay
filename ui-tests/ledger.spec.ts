@@ -159,7 +159,7 @@ test("ledger tells the current order apart from reversed history without repeati
   await expect(summary.locator("dt").filter({ hasText: /商户订单号（业务网站）|内部流水编号/ })).toHaveCount(0);
   await expect(currentCard.getByText("已关联", { exact: true })).toBeVisible();
   await expect(currentCard.locator("dt").filter({ hasText: /^撤销时间$/ })).toHaveCount(0);
-  await expect(page.locator("[data-ledger-source]").first().locator("dt").filter({ hasText: /^(内部流水编号（PerPay）|保存时间)$/ })).toHaveCount(2);
+  await expect(page.locator("[data-ledger-source]").first().locator("dt").filter({ hasText: /^(内部流水编号（StarPAY）|保存时间)$/ })).toHaveCount(2);
   await expect(page.locator("#ledger-conflicts-heading")).toHaveCount(0);
   await screenshot(page, info, "ledger-current-order-reading");
 

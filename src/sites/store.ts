@@ -8,6 +8,7 @@ import { fingerprintSecret, isCanonicalSecret } from "../settings/model.ts";
 import type { SiteSecretPurpose } from "../settings/crypto.ts";
 import type { SettingsAuditContext } from "../settings/store.ts";
 import { SiteSecretCipher } from "./crypto.ts";
+import { displaySystemName } from "../shared/branding.ts";
 import {
   createSiteInputSchema, generateSiteClientId, siteClientIdSchema, siteConfigurationSchema,
   sitePolicySchema, updateSiteDefaultsInputSchema, updateSiteInputSchema,
@@ -240,7 +241,9 @@ function requiredSite(connection: DatabaseSync, clientId: string): SiteSnapshot 
   return site;
 }
 function mapSite(row: SiteRow): SiteSnapshot {
-  return { clientId: row.client_id, revision: integer(row.revision), configuration: siteConfigurationSchema.parse(JSON.parse(row.configuration)), createdAt: integer(row.created_at), updatedAt: integer(row.updated_at), deletedAt: row.deleted_at === null ? null : integer(row.deleted_at) };
+  const configuration = siteConfigurationSchema.parse(JSON.parse(row.configuration));
+  configuration.policy.display.checkout_name = displaySystemName(configuration.policy.display.checkout_name);
+  return { clientId: row.client_id, revision: integer(row.revision), configuration, createdAt: integer(row.created_at), updatedAt: integer(row.updated_at), deletedAt: row.deleted_at === null ? null : integer(row.deleted_at) };
 }
 function resolveSiteCollection(connection: DatabaseSync, configuration: SiteConfiguration): SiteConfiguration {
   if (!connection.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'alipay_accounts'").get()) return configuration;
@@ -260,7 +263,9 @@ function resolveSiteCollection(connection: DatabaseSync, configuration: SiteConf
 function readDefaults(connection: DatabaseSync): { revision: number; policy: SitePolicy } {
   const row = connection.prepare("SELECT revision, policy FROM site_defaults WHERE singleton_key = 1").get() as { revision: number | bigint; policy: string } | undefined;
   if (!row) throw new Error("website defaults are missing");
-  return { revision: integer(row.revision), policy: sitePolicySchema.parse(JSON.parse(row.policy)) };
+  const policy = sitePolicySchema.parse(JSON.parse(row.policy));
+  policy.display.checkout_name = displaySystemName(policy.display.checkout_name);
+  return { revision: integer(row.revision), policy };
 }
 function readSecret(connection: DatabaseSync, clientId: string, purpose: SiteSecretPurpose): SecretRow | undefined {
   return connection.prepare("SELECT * FROM site_secrets WHERE client_id = ? AND secret_name = ?").get(clientId, purpose) as unknown as SecretRow | undefined;

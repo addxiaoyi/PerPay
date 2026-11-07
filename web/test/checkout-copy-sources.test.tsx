@@ -7,7 +7,7 @@ function markup(
   basis: CheckoutViewOrder["payment"]["basis"],
   status: CheckoutViewOrder["payment"]["status"] = "CONFIRMED",
   refund: CheckoutViewOrder["refund"]["status"] = "NONE",
-  systemName = "PerPay",
+  systemName = "StarPAY",
 ) {
   const initial: CheckoutInitial = {
     systemName, serverTime: Date.UTC(2026, 9, 21), initialError: null,

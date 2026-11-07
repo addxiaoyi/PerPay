@@ -19,12 +19,28 @@ const versionSchemaMaximum = Object.freeze({
   "1.0.0-alpha.1": 35,
   "1.0.0-alpha.2": 36,
   "1.0.0-rc.1": 38,
+  "1.0.0-rc.2": 58,
+  "1.0.0-rc.3": 59,
+  "1.0.0-rc.4": 60,
+  "1.0.0-rc.5": 61,
+  "1.0.0-rc.6": 62,
+  "1.0.0-rc.7": 63,
+  "1.0.0-rc.8": 64,
+  "1.0.0-rc.9": 65,
+  "1.0.0-rc.10": 66,
 });
 
 export function inspectVersionFiles(root, requestedTag) {
   const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
   const packageVersion = packageJson.version;
   const errors = [];
+
+  try {
+    const demoPackage = JSON.parse(readFileSync(resolve(root, "examples/node-client/package.json"), "utf8"));
+    if (demoPackage.version !== packageVersion) errors.push(`examples/node-client/package.json version=${demoPackage.version ?? "<missing>"} does not match package.json=${packageVersion}`);
+  } catch {
+    errors.push("examples/node-client/package.json is missing or invalid");
+  }
 
   if (!isReleaseVersion(packageVersion)) {
     errors.push("package.json version must be a canonical release version (X.Y.Z or X.Y.Z-prerelease, without +build)");

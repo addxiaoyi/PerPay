@@ -251,7 +251,7 @@ test("detail pages separate standard cards into a readable business sequence", a
       await expect(page.locator('[data-detail-page] dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
       await expect(page.locator('[data-ledger-summary] [data-layout="flow"] dt')).toHaveText(["交易金额", "收款账号", "收支方向", "交易时间", "对方", "支付宝备注"]);
       await expect(page.locator('[data-ledger-summary] [data-detail-credentials] dt')).toHaveText(["支付宝流水号", "支付宝订单号", "支付宝商户单号"]);
-      await expect(page.locator('[data-ledger-summary] dt').filter({ hasText: /业务网站|PerPay/ })).toHaveCount(0);
+      await expect(page.locator('[data-ledger-summary] dt').filter({ hasText: /业务网站|StarPAY/ })).toHaveCount(0);
       await expect(page.locator("#ledger-conflicts-heading")).toHaveCount(0);
     }
     const geometry = await readingLayout(page, "compact");
@@ -341,7 +341,7 @@ test("three detail types retain expanded facts across widths, themes and content
         await expect(page.getByRole("heading", { name: "匹配依据", exact: true })).toBeVisible();
         await expect(page.getByRole("button", { name: "匹配依据", exact: true })).toHaveCount(0);
       } else {
-        await fields(page, ["支付宝流水号", "交易金额", "收支方向", "交易时间", "内部流水编号（PerPay）"]);
+        await fields(page, ["支付宝流水号", "交易金额", "收支方向", "交易时间", "内部流水编号（StarPAY）"]);
         await expect(page.locator('#main-content dt').filter({ hasText: /^支付宝 App ID$/ })).toHaveCount(0);
         for (const id of ["ledger-sources-heading", "ledger-matches-heading"]) await expect(page.locator("#" + id)).toBeVisible();
         await expect(page.locator("#ledger-conflicts-heading")).toHaveCount(0);
@@ -597,7 +597,7 @@ test("all genuine ledger versions and synthetic simultaneous associations remain
     } else {
       for (const source of entry.sources) {
         const card = page.locator(`[data-ledger-source="${source.ledger_entry_id}"]`);
-        await expect(card.locator("[data-detail-fields]").first().locator("dt")).toHaveText(["内部流水编号（PerPay）", "保存时间"]);
+        await expect(card.locator("[data-detail-fields]").first().locator("dt")).toHaveText(["内部流水编号（StarPAY）", "保存时间"]);
         await expect(card.getByRole("link", { name: "查看记录与处理", exact: true })).toHaveCount(0);
         const eligible = source.direction === "CREDIT" && ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(source.state);
         const actions = card.locator('[data-slot="item-actions"], [data-slot="card-action"]').first();
@@ -646,7 +646,7 @@ test("technical record identifiers remain copyable without crowding the business
   const cases = [
     { key: "notificationDns", tools: "更多操作，通知记录操作", values: [["投递编号", notification.delivery.delivery_id], ["事件编号", notification.event.event_id]] },
     { key: "matchInferred", tools: "更多操作，收款关联记录操作", values: [["关联编号", match.payment_match_id], ["流水编号", match.ledger_entry_id]] },
-    { key: "ledgerAssociated", tools: "更多操作，支付宝流水记录操作", values: [["内部流水编号（PerPay）", ledger.ledger_entry_id]] },
+    { key: "ledgerAssociated", tools: "更多操作，支付宝流水记录操作", values: [["内部流水编号（StarPAY）", ledger.ledger_entry_id]] },
     { key: "ledgerAssociated", tools: "更多操作，查账记录 1 操作", values: [["支付宝 App ID", source.app_id], ["采集来源标识", source.provider_account_key]] },
   ];
   for (const scenario of cases) {

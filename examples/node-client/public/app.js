@@ -19,7 +19,7 @@ async function request(path, payload) {
 }
 function orderAction(no, action, text) {
   const button = element('button', text); button.type = 'button'; button.dataset.order = no; button.dataset.action = action;
-  button.addEventListener('click', () => operate(async () => { await request('/demo/orders/' + encodeURIComponent(no) + '/' + action, {}); report(action === 'retry' ? '已用原单号和原参数重试；不会新建另一笔业务订单。' : '已向 PerPay 查询当前状态。'); }));
+  button.addEventListener('click', () => operate(async () => { await request('/demo/orders/' + encodeURIComponent(no) + '/' + action, {}); report(action === 'retry' ? '已用原单号和原参数重试；不会新建另一笔业务订单。' : '已向 StarPAY 查询当前状态。'); }));
   return button;
 }
 function renderOrders(orders, origin) {
@@ -35,7 +35,7 @@ function renderOrders(orders, origin) {
     item.append(element('p', '请求金额 ' + money(order.amount_cents) + (snapshot ? ' · 实际应付 ' + money(snapshot.payable_amount_cents) : ' · 尚未取得订单响应')));
     if (snapshot) {
       item.append(element('p', (labels[snapshot.payment_status] ?? snapshot.payment_status) + ' · ' + (labels[snapshot.refund_status] ?? snapshot.refund_status) + ' · 版本 ' + snapshot.version));
-      item.append(element('p', '来源：' + (snapshot.source === 'webhook' ? '已验签通知' : 'PerPay 服务端响应'), 'muted'));
+      item.append(element('p', '来源：' + (snapshot.source === 'webhook' ? '已验签通知' : 'StarPAY 服务端响应'), 'muted'));
     }
     if (!order.notifications) item.append(element('p', '此旧订单没有回调地址，需手动查单；新订单会使用当前回调配置。', 'muted'));
     if (order.last_error) item.append(element('p', order.last_error, 'error'));
@@ -54,7 +54,7 @@ function renderOrders(orders, origin) {
 }
 async function refresh() {
   const state = await request('/demo/state'); csrf = state.csrf;
-  document.querySelector('#connection').textContent = 'PerPay 地址：' + state.perpay_url + ' · 密钥仅保存在后端';
+  document.querySelector('#connection').textContent = 'StarPAY 地址：' + state.perpay_url + ' · 密钥仅保存在后端';
   document.querySelector('#notification-hint').textContent = state.notifications ? '回调地址已配置：收到付款通知并验签后，订单状态自动更新。' : '回调配置缺失，请填写通知地址和签名密钥后重启 Demo。';
   // Unchanged polling must not replace focused controls. No upstream polling is automatic.
   const signature = JSON.stringify(state.orders) + state.orders.map(order => Date.parse(order.snapshot?.expires_at) > Date.now()).join();

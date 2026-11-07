@@ -5,6 +5,7 @@ import { MutationCache, QueryClient } from "@tanstack/react-query";
 import { client } from "./generated/client.gen";
 import type { ErrorEnvelope } from "./generated/types.gen";
 import { apiErrorMessage } from "../lib/api-errors";
+import { adminMountPath } from "../admin-base";
 
 export * as api from "./generated/sdk.gen";
 export type * from "./generated/types.gen";
@@ -64,8 +65,10 @@ export class ApiError extends Error {
   }
 }
 
+const adminMount = adminMountPath();
+
 client.setConfig({
-  baseUrl: window.location.origin,
+  baseUrl: window.location.origin + adminMount,
   credentials: "same-origin",
   cache: "no-store",
   redirect: "error",
@@ -79,7 +82,7 @@ client.interceptors.request.use((request) => {
     throw new Error("管理请求不能发送到其他业务网站。");
   }
   if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
-    const path = new URL(request.url).pathname;
+    const path = new URL(request.url).pathname.slice(adminMount.length);
     if (isReadOnlyDemo() && !["/api/admin/v1/session/login", "/api/admin/v1/session/logout", "/api/admin/v1/orders/export"].includes(path)) {
       throw new ApiError(undefined, {error:{code:"demo_read_only",message:"当前操作不可用。"}});
     }

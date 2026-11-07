@@ -62,9 +62,9 @@ describe("readable financial exception detail", () => {
     expect(orderLink).toHaveAttribute("href", scope + "/orders/" + orderId);
     expect(screen.getByRole("link", { name: /对账/ })).toHaveAttribute("href", scope + "/reconciliation?tab=exceptions&q=book&cursor=next&page=2");
     const credentials = await within(card).findByRole("region", { name: "核对凭据" });
-    expect(within(card).getByRole("heading", { name: "支付宝流水与 PerPay 记录" })).toBeVisible();
+    expect(within(card).getByRole("heading", { name: "支付宝流水与 StarPAY 记录" })).toBeVisible();
     expect(within(credentials).getByRole("heading", { name: "核对凭据", level: 4 })).toBeVisible();
-    expect(within(credentials).getAllByRole("term").map(term => term.textContent)).toEqual(["支付宝订单号", "支付宝商户单号", "内部流水编号（PerPay）"]);
+    expect(within(credentials).getAllByRole("term").map(term => term.textContent)).toEqual(["支付宝订单号", "支付宝商户单号", "内部流水编号（StarPAY）"]);
     expect(credentials.querySelector("[data-detail-fields]")).toHaveAttribute("data-layout", "columns");
     for (const value of [availableLedger.provider_order_no, availableLedger.merchant_order_no, ledgerId]) expect(within(credentials).getByText(value, { exact: true })).toBeVisible();
     expect(within(card).getByText("保留原始交易备注 第二行完整内容").closest("[data-field-wide]")).toHaveAttribute("data-field-wide", "true");
@@ -79,7 +79,7 @@ describe("readable financial exception detail", () => {
     const user = userEvent.setup();
     await user.click(await recordAction("技术详情", "异常记录操作"));
     const dialog = await screen.findByRole("dialog", { name: "技术详情" });
-    for (const [label, value] of [["异常编号", exceptionId], ["客户端 ID", scope ? "shop" : order.api_client_id], ["内部流水编号（PerPay）", ledgerId], ["内部订单编号", orderId], ["可能匹配记录编号", candidateId]]) {
+    for (const [label, value] of [["异常编号", exceptionId], ["客户端 ID", scope ? "shop" : order.api_client_id], ["内部流水编号（StarPAY）", ledgerId], ["内部订单编号", orderId], ["可能匹配记录编号", candidateId]]) {
       await user.click(within(dialog).getByRole("button", { name: "复制" + label }));
       expect(await navigator.clipboard.readText()).toBe(value);
     }

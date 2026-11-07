@@ -9,7 +9,10 @@ export interface AdminFrontend {
   readonly assets: ReadonlyMap<string, WebAsset>;
 }
 
-export function loadAdminFrontend(root = new URL("../../../web-dist/admin/", import.meta.url)): AdminFrontend | null {
+export function loadAdminFrontend(
+  root = new URL("../../../web-dist/admin/", import.meta.url),
+  basePath = "/",
+): AdminFrontend | null {
   let template: string;
   try {
     template = readFileSync(new URL("index.html", root), "utf8");
@@ -28,7 +31,7 @@ export function loadAdminFrontend(root = new URL("../../../web-dist/admin/", imp
       : null;
     if (contentType === null || !/^(?:assets\/)?[A-Za-z0-9._-]+$/.test(file)) continue;
     const bytes = readFileSync(new URL(file, root));
-    assets.set(`/admin/${file}`, Object.freeze({
+    assets.set(withBasePath(basePath, `/admin/${file}`), Object.freeze({
       body: Uint8Array.from(bytes),
       contentType,
       etag: `"${createHash("sha256").update(bytes).digest("base64url")}"`,
@@ -38,7 +41,13 @@ export function loadAdminFrontend(root = new URL("../../../web-dist/admin/", imp
     render: (initialized, systemName = DEFAULT_SYSTEM_NAME, setupTokenEnabled = false) => template
       .replace("__PERPAY_INITIALIZED__", String(initialized))
       .replace("__PERPAY_SETUP_TOKEN_REQUIRED__", String(!initialized && setupTokenEnabled))
-      .replaceAll(SYSTEM_NAME_MARKER, () => escapeSystemName(systemName)),
+      .replaceAll(SYSTEM_NAME_MARKER, () => escapeSystemName(systemName))
+      .replaceAll("/admin/", withBasePath(basePath, "/admin/"))
+      .replace("</head>", `<meta name="perpay-admin-base" content="${withBasePath(basePath, "/admin/")}" /></head>`),
     assets,
   };
+}
+
+function withBasePath(basePath: string, path: string): string {
+  return basePath === "/" ? path : `${basePath}${path}`;
 }

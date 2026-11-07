@@ -48,7 +48,7 @@ describe("callback-first caller demo page", () => {
     expect(document.querySelector("#orders")).toHaveTextContent("此旧订单没有回调地址，需手动查单");
     document.querySelector<HTMLButtonElement>('[data-action="refresh"]')!.click(); await flush();
     expect(fetchMock.mock.calls.map(([url]) => url)).toContain("/demo/orders/" + merchantNo + "/refresh");
-    expect(document.querySelector("#feedback")).toHaveTextContent("已向 PerPay 查询当前状态");
+    expect(document.querySelector("#feedback")).toHaveTextContent("已向 StarPAY 查询当前状态");
   });
   it("keeps keyboard focus during unchanged local polling and pauses while hidden", async () => {
     const { fetchMock } = mount(); await flush();

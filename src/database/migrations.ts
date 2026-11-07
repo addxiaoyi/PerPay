@@ -1,6 +1,28 @@
 import { MULTI_SITE_SCHEMA_SQL } from "../sites/migrations/schema.ts";
+import { EPAY_REFUND_SCHEMA_SQL } from "../epay-compat/refund-schema.ts";
+import { EPAY_SETTLEMENT_SCHEMA_SQL } from "../epay-compat/settlement-schema.ts";
+import { EPAY_MERCHANT_KEY_SCHEMA_SQL } from "../epay-compat/merchant-key-schema.ts";
+import { EPAY_MERCHANT_ENROLLMENT_SCHEMA_SQL } from "../epay-compat/merchant-enrollment-schema.ts";
+import { ALIPAY_WEB_SCHEMA_SQL } from "../epay-compat/alipay-web-schema.ts";
+import { EPAY_CALLBACK_RETRY_SCHEMA_SQL } from "../epay-compat/callback-retry-schema.ts";
 import { ALIPAY_ACCOUNTS_SCHEMA_SQL } from "../alipay-accounts/schema.ts";
 import { ALIPAY_ACCOUNT_DELETION_SCHEMA_SQL } from "../alipay-accounts/deletion-schema.ts";
+import { EPAY_COMPATIBILITY_SCHEMA_SQL } from "../epay-compat/schema.ts";
+import { EPAY_OUTBOX_SCHEMA_SQL } from "../epay-compat/outbox-schema.ts";
+import { EPAY_CONFIRMATION_SCHEMA_SQL } from "../epay-compat/confirmation-schema.ts";
+import { EPAY_CHANNEL_CONFIG_SCHEMA_SQL } from "../epay-compat/channel-config.ts";
+import { EPAY_MAIN_ORDER_SOURCE_SCHEMA_SQL } from "../epay-compat/main-order-source.ts";
+import { EPAY_MAIN_LEDGER_SOURCE_SCHEMA_SQL } from "../epay-compat/main-ledger-source.ts";
+import { EPAY_MAIN_REFUND_SOURCE_SCHEMA_SQL } from "../epay-compat/main-refund-source.ts";
+import { EPAY_MAIN_ACTIVITY_SOURCE_SCHEMA_SQL } from "../epay-compat/main-activity-source.ts";
+import { EPAY_MAIN_PAYMENT_ARCHIVE_SCHEMA_SQL } from "../epay-compat/main-payment-archive.ts";
+import { EPAY_LEGACY_INVOICE_CONFIG_SCHEMA_SQL } from "../epay-compat/legacy-invoice-config-schema.ts";
+import { ALIPAY_SUBMISSION_SCHEMA_SQL } from "../epay-compat/alipay-submission-schema.ts";
+import { EPAY_LIVE_BALANCE_SCHEMA_SQL } from "../epay-compat/live-balance-schema.ts";
+import { EPAY_MAIN_DELTA_SCHEMA_SQL } from "../epay-compat/main-delta-schema.ts";
+import { EPAY_LEGACY_DELTA_SCHEMA_SQL } from "../epay-compat/legacy-delta-schema.ts";
+import { MAIN_NATIVE_ORDER_SCHEMA } from "../epay-compat/main-native-schema.ts";
+import { MAIN_ORDER_ACCESS_SCHEMA } from "../epay-compat/main-order-access.ts";
 import { createHash } from "node:crypto";
 
 export interface Migration {
@@ -5026,4 +5048,178 @@ export const migrations: readonly Migration[] = [
   },
   { version: 37, name: "multiple_alipay_accounts", sql: ALIPAY_ACCOUNTS_SCHEMA_SQL, postApply: "migrate_alipay_accounts_v1" },
   { version: 38, name: "alipay_account_deletion_tombstones", sql: ALIPAY_ACCOUNT_DELETION_SCHEMA_SQL },
+  { version: 39, name: "legacy_epay_compatibility_schema", sql: EPAY_COMPATIBILITY_SCHEMA_SQL },
+  { version: 40, name: "legacy_epay_callback_outbox", sql: EPAY_OUTBOX_SCHEMA_SQL },
+  { version: 41, name: "epay_alipay_confirmations", sql: EPAY_CONFIRMATION_SCHEMA_SQL },
+  { version: 42, name: "epay_callback_methods", sql: `
+    ALTER TABLE epay_callback_jobs ADD COLUMN next_method TEXT NOT NULL DEFAULT 'POST' CHECK (next_method IN ('POST', 'GET'));
+    ALTER TABLE epay_callback_attempts ADD COLUMN method TEXT NOT NULL DEFAULT 'POST' CHECK (method IN ('POST', 'GET'));
+  ` },
+  { version: 43, name: "epay_site_bindings", sql: `
+    CREATE TABLE epay_site_bindings (
+      merchant_id INTEGER PRIMARY KEY REFERENCES epay_merchant_accounts(merchant_id),
+      client_id TEXT NOT NULL UNIQUE REFERENCES sites(client_id),
+      created_at INTEGER NOT NULL CHECK(created_at >= 0)
+    ) STRICT;
+    CREATE TRIGGER epay_site_bindings_no_update BEFORE UPDATE ON epay_site_bindings
+      BEGIN SELECT RAISE(ABORT, 'EPay site binding is immutable'); END;
+    CREATE TRIGGER epay_site_bindings_no_delete BEFORE DELETE ON epay_site_bindings
+      BEGIN SELECT RAISE(ABORT, 'EPay site binding is immutable'); END;
+  ` },
+  { version: 44, name: "epay_wechat_confirmations", sql: `
+    CREATE TABLE epay_wechat_intents (
+      trade_no TEXT PRIMARY KEY REFERENCES epay_orders(trade_no),
+      merchant_id INTEGER NOT NULL REFERENCES epay_merchant_accounts(merchant_id),
+      app_id TEXT NOT NULL CHECK(length(app_id) BETWEEN 1 AND 128),
+      provider_merchant_id TEXT NOT NULL CHECK(length(provider_merchant_id) BETWEEN 1 AND 128),
+      platform_key TEXT NOT NULL CHECK(length(platform_key) BETWEEN 1 AND 8192),
+      platform_key_id TEXT NOT NULL CHECK(length(platform_key_id) BETWEEN 1 AND 128),
+      key_nonce BLOB NOT NULL CHECK(length(key_nonce)=12),
+      key_ciphertext BLOB NOT NULL CHECK(length(key_ciphertext)>0),
+      key_tag BLOB NOT NULL CHECK(length(key_tag)=16),
+      amount_cents INTEGER NOT NULL CHECK(amount_cents>0),
+      fee_cents INTEGER NOT NULL CHECK(fee_cents>=0 AND fee_cents<=amount_cents),
+      created_at INTEGER NOT NULL CHECK(created_at>=0)
+    ) STRICT;
+    CREATE TRIGGER epay_wechat_intents_no_update BEFORE UPDATE ON epay_wechat_intents BEGIN SELECT RAISE(ABORT, 'payment intent is immutable'); END;
+    CREATE TRIGGER epay_wechat_intents_no_delete BEFORE DELETE ON epay_wechat_intents BEGIN SELECT RAISE(ABORT, 'payment intent is immutable'); END;
+    CREATE TABLE epay_wechat_confirmations (
+      trade_no TEXT PRIMARY KEY REFERENCES epay_wechat_intents(trade_no),
+      provider_trade_no TEXT NOT NULL UNIQUE CHECK(length(provider_trade_no) BETWEEN 1 AND 128),
+      merchant_id INTEGER NOT NULL REFERENCES epay_merchant_accounts(merchant_id),
+      amount_cents INTEGER NOT NULL CHECK(amount_cents>0),
+      fee_cents INTEGER NOT NULL CHECK(fee_cents>=0 AND fee_cents<=amount_cents),
+      confirmed_at INTEGER NOT NULL CHECK(confirmed_at>=0)
+    ) STRICT;
+    CREATE TRIGGER epay_wechat_confirmations_no_update BEFORE UPDATE ON epay_wechat_confirmations BEGIN SELECT RAISE(ABORT, 'payment confirmation is immutable'); END;
+    CREATE TRIGGER epay_wechat_confirmations_no_delete BEFORE DELETE ON epay_wechat_confirmations BEGIN SELECT RAISE(ABORT, 'payment confirmation is immutable'); END;
+  ` },
+  { version: 45, name: "epay_wechat_credentials", sql: `
+    CREATE TABLE epay_wechat_credentials (
+      credential_id TEXT PRIMARY KEY CHECK(length(credential_id) BETWEEN 1 AND 64),
+      app_id TEXT NOT NULL CHECK(length(app_id) BETWEEN 1 AND 128),
+      provider_merchant_id TEXT NOT NULL CHECK(length(provider_merchant_id) BETWEEN 1 AND 128),
+      platform_key TEXT NOT NULL CHECK(length(platform_key) BETWEEN 1 AND 8192),
+      platform_key_id TEXT NOT NULL CHECK(length(platform_key_id) BETWEEN 1 AND 128),
+      key_nonce BLOB NOT NULL CHECK(length(key_nonce)=12),
+      key_ciphertext BLOB NOT NULL CHECK(length(key_ciphertext)>0),
+      key_tag BLOB NOT NULL CHECK(length(key_tag)=16),
+      valid_from INTEGER NOT NULL CHECK(valid_from>=0),
+      valid_until INTEGER NOT NULL CHECK(valid_until>valid_from),
+      created_at INTEGER NOT NULL CHECK(created_at>=0),
+      created_by TEXT NOT NULL CHECK(length(created_by) BETWEEN 1 AND 128)
+    ) STRICT;
+    CREATE INDEX epay_wechat_credentials_serial ON epay_wechat_credentials(platform_key_id,valid_from,valid_until);
+    CREATE TABLE epay_wechat_credential_revocations (
+      credential_id TEXT PRIMARY KEY REFERENCES epay_wechat_credentials(credential_id),
+      revoked_at INTEGER NOT NULL CHECK(revoked_at>=0),
+      revoked_by TEXT NOT NULL CHECK(length(revoked_by) BETWEEN 1 AND 128),
+      reason TEXT NOT NULL CHECK(length(reason) BETWEEN 1 AND 512)
+    ) STRICT;
+    CREATE TRIGGER epay_wechat_credentials_no_update BEFORE UPDATE ON epay_wechat_credentials BEGIN SELECT RAISE(ABORT, 'WeChat credential is immutable'); END;
+    CREATE TRIGGER epay_wechat_credentials_no_delete BEFORE DELETE ON epay_wechat_credentials BEGIN SELECT RAISE(ABORT, 'WeChat credential is immutable'); END;
+    CREATE TRIGGER epay_wechat_revocations_no_update BEFORE UPDATE ON epay_wechat_credential_revocations BEGIN SELECT RAISE(ABORT, 'WeChat credential revocation is immutable'); END;
+    CREATE TRIGGER epay_wechat_revocations_no_delete BEFORE DELETE ON epay_wechat_credential_revocations BEGIN SELECT RAISE(ABORT, 'WeChat credential revocation is immutable'); END;
+  ` },
+  { version: 46, name: "epay_exact_wechat_orders", sql: `
+    CREATE TABLE epay_wechat_site_bindings (
+      client_id TEXT PRIMARY KEY REFERENCES sites(client_id),
+      app_id TEXT NOT NULL CHECK(length(app_id) BETWEEN 1 AND 128),
+      provider_merchant_id TEXT NOT NULL CHECK(length(provider_merchant_id) BETWEEN 1 AND 128),
+      created_at INTEGER NOT NULL CHECK(created_at>=0)
+    ) STRICT;
+    CREATE TRIGGER epay_wechat_site_bindings_no_update BEFORE UPDATE ON epay_wechat_site_bindings BEGIN SELECT RAISE(ABORT, 'WeChat site binding is immutable'); END;
+    CREATE TRIGGER epay_wechat_site_bindings_no_delete BEFORE DELETE ON epay_wechat_site_bindings BEGIN SELECT RAISE(ABORT, 'WeChat site binding is immutable'); END;
+    CREATE TABLE epay_exact_order_requests (
+      trade_no TEXT PRIMARY KEY REFERENCES epay_orders(trade_no),
+      client_id TEXT NOT NULL REFERENCES epay_wechat_site_bindings(client_id),
+      request_fingerprint TEXT NOT NULL CHECK(length(request_fingerprint)=64 AND request_fingerprint NOT GLOB '*[^0-9a-f]*'),
+      credential_id TEXT NOT NULL REFERENCES epay_wechat_credentials(credential_id),
+      fee_rate_bps INTEGER NOT NULL CHECK(fee_rate_bps BETWEEN 0 AND 5000),
+      created_at INTEGER NOT NULL CHECK(created_at>=0)
+    ) STRICT;
+    CREATE TRIGGER epay_exact_requests_no_update BEFORE UPDATE ON epay_exact_order_requests BEGIN SELECT RAISE(ABORT, 'exact order request is immutable'); END;
+    CREATE TRIGGER epay_exact_requests_no_delete BEFORE DELETE ON epay_exact_order_requests BEGIN SELECT RAISE(ABORT, 'exact order request is immutable'); END;
+  ` },
+  { version: 47, name: "epay_wechat_submission_fence", sql: `
+    CREATE TABLE epay_wechat_submissions (
+      trade_no TEXT PRIMARY KEY REFERENCES epay_exact_order_requests(trade_no),
+      attempt_id TEXT NOT NULL UNIQUE CHECK(length(attempt_id)=36),
+      state TEXT NOT NULL CHECK(state IN ('IN_FLIGHT','UNCERTAIN','SETTLED')),
+      lease_token TEXT CHECK(lease_token IS NULL OR length(lease_token)=36),
+      lease_until INTEGER,
+      started_at INTEGER NOT NULL CHECK(started_at>=0),
+      updated_at INTEGER NOT NULL CHECK(updated_at>=started_at),
+      CHECK((state='IN_FLIGHT' AND lease_token IS NOT NULL AND lease_until>started_at)
+         OR (state IN ('UNCERTAIN','SETTLED') AND lease_token IS NULL AND lease_until IS NULL))
+    ) STRICT;
+    CREATE TRIGGER epay_wechat_submissions_no_delete BEFORE DELETE ON epay_wechat_submissions
+      BEGIN SELECT RAISE(ABORT, 'WeChat submission history is immutable'); END;
+    CREATE TRIGGER epay_wechat_submissions_transition BEFORE UPDATE ON epay_wechat_submissions
+      WHEN NEW.trade_no<>OLD.trade_no OR NEW.attempt_id<>OLD.attempt_id OR NEW.started_at<>OLD.started_at
+        OR NEW.updated_at<OLD.updated_at OR NOT (
+          (OLD.state='IN_FLIGHT' AND NEW.state IN ('UNCERTAIN','SETTLED')) OR
+          (OLD.state='UNCERTAIN' AND NEW.state='SETTLED'))
+      BEGIN SELECT RAISE(ABORT, 'invalid WeChat submission transition'); END;
+  ` },
+  { version: 48, name: "epay_wechat_merchant_signing_keys", sql: `
+    CREATE TABLE epay_wechat_signing_keys (
+      key_id TEXT PRIMARY KEY CHECK(length(key_id) BETWEEN 1 AND 64),
+      app_id TEXT NOT NULL CHECK(length(app_id) BETWEEN 1 AND 128),
+      provider_merchant_id TEXT NOT NULL CHECK(length(provider_merchant_id) BETWEEN 1 AND 32),
+      merchant_serial TEXT NOT NULL CHECK(length(merchant_serial) BETWEEN 1 AND 128),
+      public_fingerprint TEXT NOT NULL CHECK(length(public_fingerprint)=64 AND public_fingerprint NOT GLOB '*[^0-9a-f]*'),
+      nonce BLOB NOT NULL CHECK(length(nonce)=12),
+      ciphertext BLOB NOT NULL CHECK(length(ciphertext)>0),
+      authentication_tag BLOB NOT NULL CHECK(length(authentication_tag)=16),
+      valid_from INTEGER NOT NULL CHECK(valid_from>=0),
+      valid_until INTEGER NOT NULL CHECK(valid_until>valid_from),
+      created_at INTEGER NOT NULL CHECK(created_at>=0),
+      created_by TEXT NOT NULL CHECK(length(created_by) BETWEEN 1 AND 128),
+      UNIQUE(app_id,provider_merchant_id,merchant_serial)
+    ) STRICT;
+    CREATE TABLE epay_wechat_signing_key_revocations (
+      key_id TEXT PRIMARY KEY REFERENCES epay_wechat_signing_keys(key_id),
+      revoked_at INTEGER NOT NULL CHECK(revoked_at>=0),
+      revoked_by TEXT NOT NULL CHECK(length(revoked_by) BETWEEN 1 AND 128),
+      reason TEXT NOT NULL CHECK(length(reason) BETWEEN 1 AND 512)
+    ) STRICT;
+    CREATE TRIGGER epay_wechat_signing_keys_no_update BEFORE UPDATE ON epay_wechat_signing_keys BEGIN SELECT RAISE(ABORT, 'WeChat signing key is immutable'); END;
+    CREATE TRIGGER epay_wechat_signing_keys_no_delete BEFORE DELETE ON epay_wechat_signing_keys BEGIN SELECT RAISE(ABORT, 'WeChat signing key is immutable'); END;
+    CREATE TRIGGER epay_wechat_signing_revocations_no_update BEFORE UPDATE ON epay_wechat_signing_key_revocations BEGIN SELECT RAISE(ABORT, 'WeChat signing key revocation is immutable'); END;
+    CREATE TRIGGER epay_wechat_signing_revocations_no_delete BEFORE DELETE ON epay_wechat_signing_key_revocations BEGIN SELECT RAISE(ABORT, 'WeChat signing key revocation is immutable'); END;
+  ` },
+  { version: 49, name: "epay_channel_config_secrets", sql: EPAY_CHANNEL_CONFIG_SCHEMA_SQL },
+  { version: 50, name: "epay_wechat_prepay_results", sql: `
+    CREATE TABLE epay_wechat_prepay_results (
+      trade_no TEXT PRIMARY KEY REFERENCES epay_wechat_submissions(trade_no),
+      attempt_id TEXT NOT NULL UNIQUE CHECK(length(attempt_id)=36),
+      nonce BLOB NOT NULL CHECK(length(nonce)=12),
+      ciphertext BLOB NOT NULL CHECK(length(ciphertext)>0),
+      authentication_tag BLOB NOT NULL CHECK(length(authentication_tag)=16),
+      received_at INTEGER NOT NULL CHECK(received_at>=0)
+    ) STRICT;
+    CREATE TRIGGER epay_wechat_prepay_no_update BEFORE UPDATE ON epay_wechat_prepay_results BEGIN SELECT RAISE(ABORT, 'WeChat prepay result is immutable'); END;
+    CREATE TRIGGER epay_wechat_prepay_no_delete BEFORE DELETE ON epay_wechat_prepay_results BEGIN SELECT RAISE(ABORT, 'WeChat prepay result is immutable'); END;
+  ` },
+  { version: 51, name: "epay_historical_main_site_sources", sql: `
+    ${EPAY_MAIN_ORDER_SOURCE_SCHEMA_SQL}
+    ${EPAY_MAIN_LEDGER_SOURCE_SCHEMA_SQL}
+    ${EPAY_MAIN_REFUND_SOURCE_SCHEMA_SQL}
+  ` },
+  { version: 52, name: "epay_legacy_invoice_config_source", sql: EPAY_LEGACY_INVOICE_CONFIG_SCHEMA_SQL },
+  { version: 53, name: "epay_historical_main_activity_sources", sql: EPAY_MAIN_ACTIVITY_SOURCE_SCHEMA_SQL },
+  { version: 54, name: "epay_historical_main_payment_archive", sql: EPAY_MAIN_PAYMENT_ARCHIVE_SCHEMA_SQL },
+  { version: 55, name: "epay_alipay_submission_fences", sql: ALIPAY_SUBMISSION_SCHEMA_SQL },
+  { version: 56, name: "epay_live_merchant_balances", sql: EPAY_LIVE_BALANCE_SCHEMA_SQL },
+  { version: 57, name: "epay_main_payment_delta_journal", sql: EPAY_MAIN_DELTA_SCHEMA_SQL },
+  { version: 58, name: "epay_legacy_payment_delta_journal", sql: EPAY_LEGACY_DELTA_SCHEMA_SQL },
+  { version: 59, name: "epay_main_native_order_contracts", sql: MAIN_NATIVE_ORDER_SCHEMA },
+  { version: 60, name: "epay_main_order_access_grants", sql: MAIN_ORDER_ACCESS_SCHEMA },
+  { version: 61, name: "epay_native_refund_workflow", sql: EPAY_REFUND_SCHEMA_SQL },
+  { version: 62, name: "epay_native_settlement_workflow", sql: EPAY_SETTLEMENT_SCHEMA_SQL },
+  { version: 63, name: "epay_merchant_key_versions", sql: EPAY_MERCHANT_KEY_SCHEMA_SQL },
+  { version: 64, name: "epay_native_merchant_enrollment", sql: EPAY_MERCHANT_ENROLLMENT_SCHEMA_SQL },
+  { version: 65, name: "epay_alipay_web_payments", sql: ALIPAY_WEB_SCHEMA_SQL },
+  { version: 66, name: "epay_callback_manual_retries", sql: EPAY_CALLBACK_RETRY_SCHEMA_SQL },
 ] as const;

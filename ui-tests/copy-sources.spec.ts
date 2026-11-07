@@ -63,7 +63,7 @@ function observeWrites(page: Page, manifest: Manifest) {
   return writes;
 }
 
-test("ledger credentials keep genuine Alipay, website and PerPay identities distinct and copyable", async ({ page, manifest }, info) => {
+test("ledger credentials keep genuine Alipay, website and StarPAY identities distinct and copyable", async ({ page, manifest }, info) => {
   test.setTimeout(180_000);
   const writes = observeWrites(page, manifest);
   await login(page, manifest);
@@ -90,7 +90,7 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
       await expect(page).toHaveURL(manifest.origin + "/admin" + scenario.path.replace("/ledger/", "/reconciliation/transactions/"));
       const summary = page.locator("[data-ledger-summary]");
       await expect(summary).toBeVisible();
-      await expect(summary.getByText("PerPay 处理状态", { exact: true })).toHaveCount(0);
+      await expect(summary.getByText("StarPAY 处理状态", { exact: true })).toHaveCount(0);
       const credentials = summary.locator("[data-detail-credentials]");
       await copyField(page, credentials, "支付宝流水号", entry.external_event_id);
       await optionalCopyField(page, credentials, "支付宝订单号", entry.provider_order_no, "复制支付宝订单号");
@@ -99,13 +99,13 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
       await expect(page.locator("[data-ledger-match]")).toHaveCount(entry.matches.length);
       for (const source of entry.sources) {
         const card = page.locator('[data-ledger-source="' + source.ledger_entry_id + '"]');
-        await expect(card.getByText("PerPay 记录状态", { exact: true })).toBeVisible();
-        await copyField(page, card, "内部流水编号（PerPay）", source.ledger_entry_id);
+        await expect(card.getByText("StarPAY 记录状态", { exact: true })).toBeVisible();
+        await copyField(page, card, "内部流水编号（StarPAY）", source.ledger_entry_id);
         if (!entry.content_consistent) {
           await optionalCopyField(page, card, "支付宝订单号", source.provider_order_no, "复制来源支付宝订单号");
           await optionalCopyField(page, card, "支付宝商户单号", source.merchant_order_no, "复制来源支付宝商户单号");
         } else {
-          await expect(card.locator("[data-detail-fields]").first().locator("dt")).toHaveText(["内部流水编号（PerPay）", "保存时间"]);
+          await expect(card.locator("[data-detail-fields]").first().locator("dt")).toHaveText(["内部流水编号（StarPAY）", "保存时间"]);
         }
         await expect(card.getByRole("link", { name: "查看记录与处理", exact: true })).toHaveCount(0);
         const eligible = source.direction === "CREDIT" && ["UNALLOCATED", "CANDIDATE", "CONFLICT"].includes(source.state);
@@ -114,7 +114,7 @@ test("ledger credentials keep genuine Alipay, website and PerPay identities dist
       }
       for (const match of entry.matches) {
         const card = page.locator('[data-ledger-match="' + match.payment_match_id + '"]');
-        await expect(card.locator("[data-match-evidence]").getByText(match.evidence_type === "MANUAL" ? "管理员人工关联" : "PerPay 按金额和付款时间推断", { exact: true })).toBeVisible();
+        await expect(card.locator("[data-match-evidence]").getByText(match.evidence_type === "MANUAL" ? "管理员人工关联" : "StarPAY 按金额和付款时间推断", { exact: true })).toBeVisible();
         await copyField(page, card, "商户订单号（业务网站）", match.merchant_order_no, "复制商户订单号");
         await expect(card.locator('[data-detail-order-summary] a[href*="/orders/"]')).toHaveAttribute("href", "/admin/orders/" + match.order_id);
         await copyField(page, card, "使用的查账记录", match.ledger_entry_id, "复制使用的查账记录编号");

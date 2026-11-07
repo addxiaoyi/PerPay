@@ -11,11 +11,11 @@ test("order and ledger sources remain distinct at desktop and 320 pixels", async
   for (const width of [1440, 320]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(manifest.origin + "/admin" + orderRoute);
-    const calculated = page.getByRole("region", { name: "PerPay 计算的金额" });
+    const calculated = page.getByRole("region", { name: "StarPAY 计算的金额" });
     await expect(calculated.getByText("加价金额", { exact: true })).toBeVisible();
     await expect(page.getByRole("region", { name: "业务网站传入的金额" }).getByText("下单金额", { exact: true })).toBeVisible();
     await expect(page.getByRole("region", { name: "支付宝流水中的实收金额" }).getByText("来自支付宝流水", { exact: true })).toBeVisible();
-    await expect(page.getByRole("region", { name: "PerPay 记录的订单信息" }).getByText("收银台有效期至", { exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "StarPAY 记录的订单信息" }).getByText("收银台有效期至", { exact: true })).toBeVisible();
     await expect(page.locator("[data-ledger-freshness]")).toContainText("最近查账成功：");
     await expect(page.getByText(/数据截至/)).toHaveCount(0);
     await record(page, info, { feature: "order-provenance", width });
@@ -33,15 +33,15 @@ test("order and ledger sources remain distinct at desktop and 320 pixels", async
     for (const label of ["交易金额", "交易时间", "支付宝订单号", "对方"]) {
       await expect(ledger.getByText(label, { exact: true })).toBeVisible();
     }
-    await expect(ledger.getByText("内部流水编号（PerPay）", { exact: true })).toHaveCount(0);
+    await expect(ledger.getByText("内部流水编号（StarPAY）", { exact: true })).toHaveCount(0);
     await expect(page.locator("#ledger-sources-heading")).toContainText("查账记录");
     const source = page.locator("[data-ledger-source]").first();
     const sourceId = await source.getAttribute("data-ledger-source");
     expect(sourceId).toBeTruthy();
-    await expect(source.getByText("PerPay 记录状态", { exact: true })).toBeVisible();
-    await expect(source.getByText("内部流水编号（PerPay）", { exact: true })).toBeVisible();
+    await expect(source.getByText("StarPAY 记录状态", { exact: true })).toBeVisible();
+    await expect(source.getByText("内部流水编号（StarPAY）", { exact: true })).toBeVisible();
     await expect(source.getByText(sourceId!, { exact: true })).toBeVisible();
-    await expect(source.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true })).toBeVisible();
+    await expect(source.getByRole("button", { name: "复制内部流水编号（StarPAY）", exact: true })).toBeVisible();
     await record(page, info, { feature: "ledger-provenance", width });
     const ledgerPath = info.outputPath(`ledger-sources-${width}.png`);
     await ledger.screenshot({ path: ledgerPath });
@@ -58,7 +58,7 @@ browserTest("order lookup labels expose their source without clipping narrow con
     for (const width of [1440, 320]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(fixture.origin + "/admin/orders");
-      for (const label of ["商户订单号（业务网站）", "内部订单编号（PerPay）"]) {
+      for (const label of ["商户订单号（业务网站）", "内部订单编号（StarPAY）"]) {
         const mode = page.getByRole("button", { name: /^查询方式：/ });
         await mode.click();
         const option = page.getByRole("menuitemradio", { name: label, exact: true });

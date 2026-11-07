@@ -17,7 +17,9 @@ function withVersionFiles(version, run, schemaMaximum = 26) {
   const root = mkdtempSync(join(tmpdir(), "perpay-release-policy-"));
   try {
     mkdirSync(join(root, "src"));
+    mkdirSync(join(root, "examples/node-client"), { recursive: true });
     writeFileSync(join(root, "package.json"), JSON.stringify({ version }));
+    writeFileSync(join(root, "examples/node-client/package.json"), JSON.stringify({ version }));
     writeFileSync(join(root, "openapi.yaml"), JSON.stringify({ info: { version } }));
     writeFileSync(join(root, "package-lock.json"), JSON.stringify({ version, packages: { "": { version } } }));
     writeFileSync(join(root, "src/version.ts"), 'export const APP_VERSION = ' + JSON.stringify(version) + ';\nexport const DATABASE_COMPATIBILITY = Object.freeze({ minimum: ' + Math.min(24, schemaMaximum) + ', maximum: ' + schemaMaximum + ' });\n');
@@ -65,7 +67,7 @@ for (const version of ["0.3.0-rc.01", "0.3.0-rc.", "0.3.0+build", "0.3.0-rc.1+bu
 }
 
 test("prerelease support does not relax cross-file version consistency", () => {
-  for (const file of ["package-lock.json", "src/version.ts", "Dockerfile", "openapi.yaml"]) {
+  for (const file of ["package-lock.json", "src/version.ts", "Dockerfile", "openapi.yaml", "examples/node-client/package.json"]) {
     withVersionFiles("0.3.0-rc.1", root => {
       const target = join(root, file);
       writeFileSync(target, readFileSync(target, "utf8").replaceAll("0.3.0-rc.1", "0.3.0-rc.2"));

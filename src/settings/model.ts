@@ -30,9 +30,9 @@ export const RUNTIME_SECRET_NAMES = [
 export type RuntimeSecretName = (typeof RUNTIME_SECRET_NAMES)[number];
 export type ProviderEnvironment = "PRODUCTION" | "SANDBOX";
 export const PRODUCTION_PROVIDER_REQUIRED_MESSAGE =
-  "PerPay 仅支持已上线的支付宝应用，请添加正式账号。历史沙箱记录仅供查看。";
+  "StarPAY 仅支持已上线的支付宝应用，请添加正式账号。历史沙箱记录仅供查看。";
 export const productionProviderEnvironmentSchema = z.literal("PRODUCTION", {
-  error: "PerPay 仅支持已上线支付宝应用的正式环境，不支持沙箱接入。",
+  error: "StarPAY 仅支持已上线支付宝应用的正式环境，不支持沙箱接入。",
 });
 
 export const DEFAULT_CHECKOUT_KEY_ROTATION_DAYS = 90;

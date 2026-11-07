@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/**/*.ts", "scripts/capture-shared-candidate.ts", "scripts/rehearse-shared-candidate.ts", "scripts/sync-legacy-sources.ts", "scripts/provision-shared-channels.ts", "scripts/reconcile-maintenance-candidate.ts", "scripts/rehearse-release-restore.ts", "scripts/verify-live-channels-readonly.ts", "scripts/checkpoint-candidate-release.ts", "scripts/record-cutover.ts", "scripts/provision-snapshot-reader.ts", "scripts/verify-main-bridge.ts"]
+}

@@ -146,7 +146,7 @@ export function DeliveryCard({
       ? [["下次重试", dateTime(delivery.next_attempt_at)] as const]
       : []),
     ...(delivery.acknowledged_at
-      ? [["通知确认时间（PerPay 记录）", dateTime(delivery.acknowledged_at)] as const]
+      ? [["通知确认时间（StarPAY 记录）", dateTime(delivery.acknowledged_at)] as const]
       : []),
     ...(delivery.last_error_code && delivery.last_error_code !== last?.error_code
       ? [["最近错误", notificationErrorName(delivery.last_error_code)] as const]

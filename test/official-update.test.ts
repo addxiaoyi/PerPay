@@ -35,7 +35,7 @@ describe("official update checks", () => {
       assert.equal(options?.redirect, "error");
       assert.equal(options?.credentials, "omit");
       assert.ok(options?.signal instanceof AbortSignal);
-      assert.deepEqual(options?.headers, { accept: "application/vnd.github+json", "user-agent": "PerPay-update-check", "x-github-api-version": "2022-11-28" });
+      assert.deepEqual(options?.headers, { accept: "application/vnd.github+json", "user-agent": "StarPAY-update-check", "x-github-api-version": "2022-11-28" });
       return Response.json(release(nextVersion, { body: "untrusted release HTML must not be returned", assets: [{ browser_download_url: "https://evil.invalid" }] }));
     } });
     assert.equal(calls, 0);

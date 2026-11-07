@@ -11,6 +11,7 @@ import {
 import { ErrorNotice, QueryView } from "@/components/request-state";
 import { navigationSelection } from "@/lib/navigation-selection";
 import { WorkspaceSwitchingContext } from "@/lib/workspace-navigation-state";
+import { adminBasePath } from "@/admin-base";
 
 type Workspace = WorkspaceScope & { site?: UseQueryResult<{ data: Site }> };
 const WorkspaceContext = createContext<Workspace>({ clientId: null, base: "" });
@@ -19,7 +20,7 @@ export const useWorkspace = () => useContext(WorkspaceContext);
 // Navigation can remember a site on shared pages without changing their API scope.
 export const useNavigationWorkspace = () => useContext(NavigationWorkspaceContext);
 export function adminRoutePathname(pathname: string) {
-  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const base = adminBasePath().replace(/\/$/, "");
   return base && (pathname === base || pathname.startsWith(base + "/"))
     ? pathname.slice(base.length) || "/"
     : pathname;

@@ -90,7 +90,7 @@ describe("administrator-only refund marks", () => {
       "shrink-0",
     );
     expect(within(dialog).getByText(longOrder.product_name)).toBeVisible();
-    expect(dialog).toHaveAccessibleDescription(/PerPay 不执行实际退款/);
+    expect(dialog).toHaveAccessibleDescription(/StarPAY 不执行实际退款/);
     await userEvent
       .setup()
       .click(within(dialog).getByRole("button", { name: "取消" }));
@@ -123,7 +123,7 @@ describe("administrator-only refund marks", () => {
       );
       const dialog = screen.getByRole("dialog");
       expect(dialog).toHaveAccessibleDescription(
-        /仅记录外部已完成的退款。PerPay 不执行实际退款，也未验证退款。/,
+        /仅记录外部已完成的退款。StarPAY 不执行实际退款，也未验证退款。/,
       );
       expect(within(dialog).getByLabelText("备注（可选）")).not.toBeRequired();
       expect(
@@ -458,7 +458,7 @@ describe("administrator-only refund marks", () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    expect(await screen.findByText("PerPay 记录状态")).toBeVisible();
+    expect(await screen.findByText("StarPAY 记录状态")).toBeVisible();
     expect(screen.getAllByText("支出").length).toBeGreaterThan(0);
     expect(screen.queryByText(/支出仅作流水留存/)).not.toBeInTheDocument();
     expect(

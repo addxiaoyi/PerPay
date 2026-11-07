@@ -64,7 +64,7 @@ describe("unified transaction detail", () => {
       expect(card).toHaveAttribute("id", "source-" + id);
       expect(within(card).getByRole("button", { name: "人工关联收款" })).toBeVisible();
       expect(within(card).queryByRole("link", { name: "查看记录与处理" })).not.toBeInTheDocument();
-      await user.click(within(card).getByRole("button", { name: "复制内部流水编号（PerPay）" }));
+      await user.click(within(card).getByRole("button", { name: "复制内部流水编号（StarPAY）" }));
       expect(writeText).toHaveBeenLastCalledWith(id);
     }
     expect(document.querySelector("#ledger-matches-heading")!.compareDocumentPosition(document.querySelector("#ledger-sources-heading")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -123,7 +123,7 @@ describe("unified transaction detail", () => {
     mount({ ...detailFixture(), active_match_count: 1, active_match: match, matches: [match] });
     await screen.findByRole("link", { name: match.product_name });
     const card = document.querySelector<HTMLElement>("[data-ledger-match]")!;
-    expect(card).toHaveTextContent(evidence === "MANUAL" ? "管理员人工关联" : "PerPay 按金额和付款时间推断");
+    expect(card).toHaveTextContent(evidence === "MANUAL" ? "管理员人工关联" : "StarPAY 按金额和付款时间推断");
     expect(within(card).queryByText("支付宝交易金额")).not.toBeInTheDocument();
     expect(document.querySelector("[data-ledger-unmatched]")).toBeNull();
   });

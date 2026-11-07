@@ -141,7 +141,7 @@ export function eventExplanation(event: AdminOrderEvent): string | null {
   if (event.event_type === "PAYMENT_CONFIRMED") {
     if (event.details.evidence_type === "MANUAL") return "管理员人工关联";
     if (event.details.evidence_type === "AMOUNT_INFERRED")
-      return "PerPay 按金额和付款时间推断";
+      return "StarPAY 按金额和付款时间推断";
   }
   return null;
 }

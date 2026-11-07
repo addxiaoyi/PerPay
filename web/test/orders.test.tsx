@@ -90,7 +90,7 @@ describe("order browsing", () => {
     }
   });
 
-  it.each(["商户订单号（业务网站）", "内部订单编号（PerPay）"])(
+  it.each(["商户订单号（业务网站）", "内部订单编号（StarPAY）"])(
     "aborts a %s lookup when leaving and ignores a late response",
     async (mode) => {
       let finish!: (response: Response) => void;

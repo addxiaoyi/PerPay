@@ -44,7 +44,8 @@ it("upgrades an actual schema 37 database without changing active or pending acc
     legacy.owner.close();
 
     upgraded = await AppDatabase.open(path, { masterKey: keyMaster });
-    assert.equal(Number(upgraded.read(db => db.prepare("SELECT max(version) AS version FROM schema_migrations").get()!.version)), 38);
+    const latestSchema = Math.max(...migrations.map(migration => migration.version));
+    assert.equal(Number(upgraded.read(db => db.prepare("SELECT max(version) AS version FROM schema_migrations").get()!.version)), latestSchema);
     assert.deepEqual(upgraded.read(db => db.prepare("SELECT * FROM alipay_accounts ORDER BY account_id").all().map(account => ({ ...account }))),
       beforeAccounts.map(account => ({ ...account, deleted_at: null })));
     for (const table of preservedTables) assert.deepEqual(upgraded.read(db => db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()), before.get(table), table);

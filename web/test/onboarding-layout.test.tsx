@@ -139,7 +139,7 @@ describe("onboarding workspace and credential handoff", () => {
   it("redirects old API setup links to credential management without reading secrets", async () => {
     const view = mountOnboarding({ stage: 4, path: onboardingPath("api") });
     expect(
-      await screen.findByRole("button", { name: "查看PerPay API 密钥" }),
+      await screen.findByRole("button", { name: "查看StarPAY API 密钥" }),
     ).toBeVisible();
     expect(view.router.state.location.pathname).toBe("/settings/security");
     expect(

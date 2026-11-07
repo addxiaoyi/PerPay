@@ -1,0 +1,12 @@
+.payment-portal { --sidebar-width: 18rem; --header-height: 3.5rem; }
+.portal-chart { height: 17rem; min-width: 0; }
+.portal-table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+.portal-table th { text-align: left; font-weight: 500; color: var(--muted-foreground); }
+.portal-table td, .portal-table th { padding: .875rem .75rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.portal-table tr:last-child td { border-bottom: 0; }
+.portal-table .portal-number { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.portal-id { overflow-wrap: anywhere; min-width: 0; }
+@media (max-width: 767px) {
+  .payment-portal input, .payment-portal textarea, .payment-portal [data-slot="select-trigger"] { font-size: 1rem; }
+  .portal-chart { height: 13rem; }
+}

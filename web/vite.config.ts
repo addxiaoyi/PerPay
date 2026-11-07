@@ -12,6 +12,11 @@ const backend = process.env.PERPAY_DEV_API_URL ?? "http://localhost:6190";
 export default defineConfig({
   root,
   base: "/admin/",
+  experimental: {
+    renderBuiltUrl(_filename, { hostType }) {
+      return hostType === "js" ? { relative: true } : undefined;
+    },
+  },
   plugins: [
     adminBasePath(),
     adminInitialization(backend),

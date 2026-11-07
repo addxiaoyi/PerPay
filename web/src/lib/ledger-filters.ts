@@ -75,7 +75,7 @@ export function readLedgerFilters(search: URLSearchParams) {
   const association = search.get("association_status") || undefined;
   const hasReversals = search.get("has_reversals");
   if (direction !== "ALL" && !LEDGER_DIRECTIONS.includes(direction as typeof LEDGER_DIRECTIONS[number])) throw new Error("收支方向无效，请重新选择筛选条件。");
-  if (state && !LEDGER_STATES.includes(state as typeof LEDGER_STATES[number])) throw new Error("PerPay 处理状态无效，请重新选择筛选条件。");
+  if (state && !LEDGER_STATES.includes(state as typeof LEDGER_STATES[number])) throw new Error("StarPAY 处理状态无效，请重新选择筛选条件。");
   if (association && !LEDGER_ASSOCIATION_STATES.includes(association as typeof LEDGER_ASSOCIATION_STATES[number])) throw new Error("关联状态无效，请重新选择筛选条件。");
   if (hasReversals !== null && hasReversals !== "true" && hasReversals !== "false") throw new Error("撤销记录筛选无效，请重新选择筛选条件。");
   createdDateRange(list.query.createdFrom, list.query.createdTo);

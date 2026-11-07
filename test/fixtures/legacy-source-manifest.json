@@ -1,0 +1,116 @@
+{
+  "capturedOn": "2026-11-07",
+  "files": [
+    {
+      "path": "test/fixtures/starmc-main/modules/payment/routes.js",
+      "sourceComponent": "modules/payment/routes.js",
+      "sha256": "048a144d814527f0e72529c9fdcd1c47225c9c410f90ee696773e7379da4144e",
+      "sourceByteSha256": "048a144d814527f0e72529c9fdcd1c47225c9c410f90ee696773e7379da4144e"
+    },
+    {
+      "path": "test/fixtures/starmc-main/modules/payment/migration-snapshot.js",
+      "sourceComponent": "modules/payment/migration-snapshot.js",
+      "sha256": "18f2d15543a4db5ea7efc82e84fed6c1c3caed7dd69c4d08b86416c88d53ce0f",
+      "sourceByteSha256": "18f2d15543a4db5ea7efc82e84fed6c1c3caed7dd69c4d08b86416c88d53ce0f"
+    },
+    {
+      "path": "test/fixtures/starmc-main/modules/user/profile.js",
+      "sourceComponent": "modules/user/profile.js",
+      "sha256": "435bde45bd2baaa72a6c407ed7aa98a51876c6d63549a4385612dfa4b6b96b5a",
+      "sourceByteSha256": "435bde45bd2baaa72a6c407ed7aa98a51876c6d63549a4385612dfa4b6b96b5a"
+    },
+    {
+      "path": "test/fixtures/starmc-main/utils/permission.js",
+      "sourceComponent": "utils/permission.js",
+      "sha256": "75f2631f0a0f521455babfd05c69548fd533a1bf1662042af4dc8972f7f011c0",
+      "sourceByteSha256": "8d2bdb8c8434bc5f820815d71e9519322854e8ef26d4b04d510a1cb1bedcc9ca"
+    },
+    {
+      "path": "test/fixtures/legacy-epay/perpay-shadow-orders.ts",
+      "sourceComponent": "epay-next-github/src/lib/perpay-shadow-orders.ts",
+      "sha256": "b4732e34a08ccea78bccf73619185fdcacbe1b6b4d2577872de386896f2188fd",
+      "sourceByteSha256": "b4732e34a08ccea78bccf73619185fdcacbe1b6b4d2577872de386896f2188fd"
+    },
+    {
+      "path": "test/fixtures/legacy-epay/perpay-shadow-combined-orders.ts",
+      "sourceComponent": "epay-next-github/src/lib/perpay-shadow-combined-orders.ts",
+      "sha256": "6c7d5d72ad04536d1e1219d6501f5f69add221c9a950ee4f4e5251b1b238d8c7",
+      "sourceByteSha256": "6c7d5d72ad04536d1e1219d6501f5f69add221c9a950ee4f4e5251b1b238d8c7"
+    },
+    {
+      "path": "test/fixtures/legacy-epay/perpay-shadow-balance.ts",
+      "sourceComponent": "epay-next-github/src/lib/perpay-shadow-balance.ts",
+      "sha256": "ef51ec20d9abbd1ea3aa7e0a4a4f47b927125f74714f8e90ceb57fa2b2175365",
+      "sourceByteSha256": "ef51ec20d9abbd1ea3aa7e0a4a4f47b927125f74714f8e90ceb57fa2b2175365"
+    },
+    {
+      "path": "test/fixtures/lightpay-project.php",
+      "sourceComponent": "lightpay-project-candidate.php",
+      "sha256": "ef43bec00458777971902f6fe5f9d299f64ddbe30e49ba2e49f5537229b30d1e",
+      "sourceByteSha256": "ef43bec00458777971902f6fe5f9d299f64ddbe30e49ba2e49f5537229b30d1e"
+    },
+    {
+      "path": "test/fixtures/starmc-main/auth/capabilities.js",
+      "sourceComponent": "auth/capabilities.js",
+      "sha256": "f7bca168e52868aab7970acca088da0794776588fb3023089ccca8f5baa62766",
+      "sourceByteSha256": "f7bca168e52868aab7970acca088da0794776588fb3023089ccca8f5baa62766"
+    },
+    {
+      "path": "test/fixtures/starmc-main/profile-admin-access.mjs",
+      "sourceComponent": "assets/index-SyXhQ1p_.js#r0",
+      "sha256": "6c04185f89dbf6416c7f9ca06d45b961c62b17157af868b94af4b94c4806170d",
+      "sourceByteSha256": "c735dad27c95c7c3da52c3359e2062744dda5e51acf7a751d767a74c47ddb0e7"
+    },
+    {
+      "path": "test/fixtures/legacy-workspace/src/components/shadow-orders.tsx",
+      "sourceComponent": "epay-next-github/src/components/shadow-orders.tsx",
+      "sha256": "5556d7b406342c190f91f8364f2c9bd5130e50585a68bfc28ebfbcccef09624f",
+      "sourceByteSha256": "5556d7b406342c190f91f8364f2c9bd5130e50585a68bfc28ebfbcccef09624f"
+    },
+    {
+      "path": "test/fixtures/legacy-workspace/src/components/shadow-callbacks.tsx",
+      "sourceComponent": "epay-next-github/src/components/shadow-callbacks.tsx",
+      "sha256": "cad9dabbb031da8fc06fd610bc4b505319fdcda7cc7d8052df001e76ac9340a1",
+      "sourceByteSha256": "cad9dabbb031da8fc06fd610bc4b505319fdcda7cc7d8052df001e76ac9340a1"
+    },
+    {
+      "path": "test/fixtures/legacy-workspace/src/app/globals.css",
+      "sourceComponent": "epay-next-github/src/app/globals.css",
+      "sha256": "fe866399f3e23a6bd8cbf27fe1154a6bfae3a3cf36d6a82647f5c8dfb80f1a3a",
+      "sourceByteSha256": "1c0d6975c662ae84e896e2956faebc66c8b800a72481e505232306403ca4a3c1"
+    },
+    {
+      "path": "test/fixtures/legacy-workspace/tests/fixtures/shadow-orders.html",
+      "sourceComponent": "epay-next-github/tests/fixtures/shadow-orders.html",
+      "sha256": "88f5eb3e078fcebc4294568012f1743e0468ba4e972bfb181e2f19b98efb33b6",
+      "sourceByteSha256": "88f5eb3e078fcebc4294568012f1743e0468ba4e972bfb181e2f19b98efb33b6"
+    },
+    {
+      "path": "test/fixtures/legacy-workspace/tests/fixtures/shadow-orders.tsx",
+      "sourceComponent": "epay-next-github/tests/fixtures/shadow-orders.tsx",
+      "sha256": "de7d9a340cc3fdba8d04a39abd3f2ce2d8f54ace53201bd52666edc2308e52a4",
+      "sourceByteSha256": "de7d9a340cc3fdba8d04a39abd3f2ce2d8f54ace53201bd52666edc2308e52a4"
+    },
+    {
+      "path": "test/fixtures/legacy-workspace/tests/fixtures/shadow-callbacks.html",
+      "sourceComponent": "epay-next-github/tests/fixtures/shadow-callbacks.html",
+      "sha256": "5d44ffec51944756336e527e8000bdc6935964f957fd237ccb9f0e3b5e8fb5cd",
+      "sourceByteSha256": "5d44ffec51944756336e527e8000bdc6935964f957fd237ccb9f0e3b5e8fb5cd"
+    },
+    {
+      "path": "test/fixtures/legacy-workspace/tests/fixtures/shadow-callbacks.tsx",
+      "sourceComponent": "epay-next-github/tests/fixtures/shadow-callbacks.tsx",
+      "sha256": "b512dc4cfd6b943095eff1efdb1c31c802ac707088b4bba935ed4b8585acc30d",
+      "sourceByteSha256": "b512dc4cfd6b943095eff1efdb1c31c802ac707088b4bba935ed4b8585acc30d"
+    }
+  ],
+  "liveVerification": {
+    "checkedOn": "2026-11-07",
+    "profileBundleSha256": "7773bf5458413536c35aff46ccb9f660b92262f5e588ebaf1f3f2fd3950dc0d5",
+    "profileViewSha256": "6c9f2b79e9260a43eb8691144f77bcc7dcf26101f8266381b7ab80556fc74d97",
+    "merchantAccessBlockSha256": "125072da375761bbca4e0529f9d8599d39d43bae32c59f92232ea5fcbcc7bc09",
+    "merchantAccessBlockMatchesLive": true,
+    "capabilitySourceMatchesLive": true
+  },
+  "hashNormalization": "UTF-8 with LF line endings; sourceByteSha256 retains original evidence"
+}

@@ -122,7 +122,7 @@ describe("order detail work surface", () => {
       .getByRole("heading", { name: "订单动态" })
       .closest<HTMLElement>("[data-slot=card]")!;
     expect(within(timeline).getByText("订单已创建")).toBeVisible();
-    expect(within(timeline).getByText("PerPay 按金额和付款时间推断")).toBeVisible();
+    expect(within(timeline).getByText("StarPAY 按金额和付款时间推断")).toBeVisible();
     expect(
       within(timeline).queryByText("已生成订单及付款窗口。"),
     ).not.toBeInTheDocument();
@@ -545,7 +545,7 @@ describe("order detail work surface", () => {
     await user.click(await recordAction("标记已退款"));
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveAccessibleDescription(
-      /PerPay 不执行实际退款，也未验证退款/,
+      /StarPAY 不执行实际退款，也未验证退款/,
     );
     await user.type(
       within(dialog).getByLabelText("备注（可选）"),
@@ -626,12 +626,12 @@ describe("payment provenance", () => {
     });
     mount();
     await screen.findByRole("button", { name: "更多操作，订单操作" });
-    const currentPayment = within(screen.getByRole("group", { name: "PerPay 收款状态" }));
-    const inferred = currentPayment.queryAllByText(/PerPay 按金额和付款时间推断/);
+    const currentPayment = within(screen.getByRole("group", { name: "StarPAY 收款状态" }));
+    const inferred = currentPayment.queryAllByText(/StarPAY 按金额和付款时间推断/);
     const manual = currentPayment.queryAllByText(/管理员人工关联/);
     expect(inferred.length > 0).toBe(basis === "INFERRED");
     expect(manual.length > 0).toBe(basis === "MANUAL");
-    expect(within(screen.getByRole("region", { name: "PerPay 计算的金额" })).getByText(/0\.01/)).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "StarPAY 计算的金额" })).getByText(/0\.01/)).toBeVisible();
     expect(within(screen.getByRole("region", { name: "业务网站传入的订单信息" })).getByText("业务网站传入的备注")).toBeVisible();
     expect(screen.queryByText(/数据截至/)).not.toBeInTheDocument();
   });

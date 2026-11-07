@@ -34,6 +34,14 @@ const checkVersionText = readFileSync(
   "utf8",
 );
 
+test("runtime image includes the static asset required by server startup", () => {
+  const image = readFileSync(new URL("../static/app/alipay.png", import.meta.url));
+  assert.deepEqual(image.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  const runtime = dockerfileText.split(/^FROM\s+\$\{NODE_IMAGE\}\s+AS\s+runtime\s*$/mu)[1];
+  assert.ok(runtime, "Dockerfile runtime stage is missing");
+  assert.match(runtime, /^COPY\s+(?:--chown=node:node\s+)?static\s+\.\/static\s*$/mu);
+});
+
 test("Compose contract accepts the default services and profile-gated maintenance topology", () => {
   const contract = inspectComposeContract(validCompose);
   assert.equal(contract.image, "ghcr.io/mashiro0619/perpay:latest");
@@ -48,6 +56,7 @@ test("Compose contract accepts the default services and profile-gated maintenanc
   assert.equal(parsed.services.app.environment.PERPAY_PUBLIC_URL, "https://pay.example.com");
   assert.equal(parsed.services.app.environment.PERPAY_SECRETS_DIR, "/run/perpay-secrets");
   assert.equal(parsed.services.app.environment.PERPAY_SETUP_TOKEN_ENABLED, "false");
+  assert.equal(parsed.services.app.environment.PERPAY_BASE_PATH, "/");
   assert.equal(parsed.services.app.environment.PERPAY_BACKUP_INTERVAL_SECONDS, undefined);
   assert.equal(parsed.services.backup.environment.PERPAY_BACKUP_INTERVAL_SECONDS, undefined);
   assert.equal(parsed.services.backup.environment.PERPAY_SETUP_TOKEN_ENABLED, undefined);
@@ -69,6 +78,11 @@ test("Compose contract accepts the default services and profile-gated maintenanc
     "perpay-backups:/backups",
     "perpay-secrets:/run/perpay-secrets:ro",
   ]);
+});
+
+test("Compose contract requires the default base path and a base-path-aware healthcheck", () => {
+  assert.throws(() => inspectComposeContract(validCompose.replace('PERPAY_BASE_PATH: "/"', 'PERPAY_BASE_PATH: "/pay"')), /PERPAY_BASE_PATH/u);
+  assert.throws(() => inspectComposeContract(validCompose.replace("(b==='/'?'':b)", "''")), /healthcheck\.test/u);
 });
 
 test("Compose contract rejects duplicate keys, unexpected services, and renamed projects", () => {
@@ -171,7 +185,8 @@ test("the application image contains only the pinned Node runtime and applicatio
   assert.match(dockerfileText, /mkdir -p \/data \/backups/u);
   assert.match(dockerfileText, /apk upgrade --no-cache/u);
   assert.match(dockerfileText, /VOLUME \["\/data", "\/backups", "\/run\/perpay-secrets"\]/u);
-  assert.match(dockerfileText, /http:\/\/127\.0\.0\.1:6190\/healthz/u);
+  assert.match(dockerfileText, /process\.env\.PERPAY_BASE_PATH/u);
+  assert.match(dockerfileText, /http:\/\/127\.0\.0\.1:6190.*\/healthz/u);
   assert.doesNotMatch(dockerfileText, /\/readyz/u);
   assert.doesNotMatch(noticeText, /restic|Go toolchain|golang/iu);
   assert.equal(existsSync(new URL("../third_party/restic/LICENSE", import.meta.url)), false);
@@ -315,6 +330,9 @@ test("release builds, scans, verifies, and publishes fixed and latest images", (
 
 test("daily CI keeps bounded Linux checks and a separate Chromium regression job", () => {
   const workflow = parse(ciWorkflowText);
+  assert.deepEqual(workflow.on.push.branches, ["main", "codex/**"]);
+  assert.ok(Object.hasOwn(workflow.on, "pull_request"));
+  assert.ok(Object.hasOwn(workflow.on, "workflow_dispatch"));
   assert.deepEqual(Object.keys(workflow.jobs), ["check", "ui"]);
   assert.equal(workflow.jobs.check["runs-on"], "ubuntu-24.04");
   assert.equal(workflow.jobs.check["timeout-minutes"], 20);
@@ -322,13 +340,16 @@ test("daily CI keeps bounded Linux checks and a separate Chromium regression job
   assert.deepEqual(commands, [
     "npm ci --ignore-scripts",
     "npm run check",
+    "npm run test:permissions",
     "npm audit --audit-level=high",
   ]);
   assert.doesNotMatch(ciWorkflowText, /windows|docker build|trivy|compose up/iu);
   assert.equal(workflow.jobs.ui["runs-on"], "ubuntu-24.04");
   assert.equal(workflow.jobs.ui["timeout-minutes"], 25);
   assert.deepEqual(workflow.jobs.ui.steps.map(step => step.run).filter(Boolean), [
-    "npm ci --ignore-scripts", "npx playwright install --with-deps chromium", "npm run build", "npm run test:ui -- --project core --workers=2",
+    "npm ci --ignore-scripts", "npx playwright install --with-deps chromium", "npm run build",
+    "npx playwright test ui-tests/portal-permissions.spec.ts --project core --workers=2",
+    "npm run test:ui -- --project core --workers=2",
   ]);
   const artifact = workflow.jobs.ui.steps.find(step => step.uses?.startsWith("actions/upload-artifact@"));
   assert.equal(artifact.if, "failure() || cancelled()");

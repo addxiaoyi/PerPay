@@ -54,7 +54,7 @@ test("site periods keep complete single-line labels at desktop widths and enlarg
     await record(page, info, { width, font, sitePeriodLabels: labels, periodBox, helpBox });
     await info.attach(`site-periods-${width}-${font}`, { body: await page.locator(".site-management-toolbar").screenshot(), contentType: "image/png" });
     await help.click();
-    await expect(page.getByText("实收与确认笔数按北京时间的 PerPay 确认时间统计，未扣退款和费用；今天尚未结束。", { exact: true })).toBeVisible();
+    await expect(page.getByText("实收与确认笔数按北京时间的 StarPAY 确认时间统计，未扣退款和费用；今天尚未结束。", { exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(help).toBeFocused();
   }

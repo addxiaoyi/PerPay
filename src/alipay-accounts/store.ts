@@ -37,9 +37,9 @@ function encrypted(row: Pick<SecretRow,"cipher_version"|"nonce"|"ciphertext"|"au
 }
 
 export class AlipayAccountStore {
-  readonly #database:AppDatabase;
+  readonly #database:Pick<AppDatabase, "read" | "write" | "instanceId">;
   readonly #cipher:RuntimeSecretCipher;
-  constructor(database:AppDatabase,masterKey:Uint8Array) {
+  constructor(database:Pick<AppDatabase, "read" | "write" | "instanceId">,masterKey:Uint8Array) {
     this.#database=database;
     this.#cipher=new RuntimeSecretCipher(masterKey,database.instanceId());
   }

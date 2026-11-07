@@ -19,7 +19,7 @@ async function enableOrderDetails(page: Page) {
   await page.getByRole("button", { name: "更多订单操作", exact: true }).click();
   await page.getByRole("menuitem", { name: "列表显示", exact: true }).click();
   const display = page.getByRole("dialog", { name: "列表显示", exact: true });
-  await display.getByRole("checkbox", { name: "PerPay 确认时间", exact: true }).check();
+  await display.getByRole("checkbox", { name: "StarPAY 确认时间", exact: true }).check();
   await display.getByRole("button", { name: "完成", exact: true }).click();
   await expect(display).toHaveCount(0);
 }
@@ -126,7 +126,7 @@ test.describe("list summary motion", () => {
       expect(fullHeight).toBeGreaterThan(20);
       expect(opened.some(sample => sample.height > 1 && sample.height < fullHeight - 1), "opening passes through an actual intermediate height").toBe(true);
       expect(opened.filter(sample => sample.expanded && sample.connected).every(sample => !sample.inert && !sample.hidden)).toBe(true);
-      await expect(panel.getByText("PerPay 确认时间", { exact: true })).toBeVisible();
+      await expect(panel.getByText("StarPAY 确认时间", { exact: true })).toBeVisible();
       evidence.opened = opened;
 
       await watchHeight(row, "close");
@@ -257,7 +257,7 @@ test.describe("list summary motion", () => {
       const reference = await completeText(row.getByText(merchantOrderNo, { exact: true }));
       expect(new Set(reference.lines.map(line => Math.round(line.top))).size).toBeGreaterThan(1);
       const panel = row.locator(panelSelector);
-      const label = await completeText(panel.getByText("PerPay 确认时间", { exact: true }));
+      const label = await completeText(panel.getByText("StarPAY 确认时间", { exact: true }));
       const details = await panel.evaluate(element => ({ height: element.clientHeight, scrollHeight: element.scrollHeight, overflowX: getComputedStyle(element).overflowX, overflowY: getComputedStyle(element).overflowY }));
       expect(details.scrollHeight).toBeLessThanOrEqual(details.height + 1);
       await expect(page).toHaveURL(listUrl);

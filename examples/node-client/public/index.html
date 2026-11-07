@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PerPay 调用端 Demo</title>
+  <title>StarPAY 调用端 Demo</title>
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
-  <header class="page-heading"><div><h1>PerPay 调用端 Demo</h1><p id="connection">正在连接本机示例服务…</p></div><button id="reload" type="button">刷新本地记录</button></header>
+  <header class="page-heading"><div><h1>StarPAY 调用端 Demo</h1><p id="connection">正在连接本机示例服务…</p></div><button id="reload" type="button">刷新本地记录</button></header>
   <main>
     <div class="notice"><strong>这里创建的是真实订单，不是模拟支付。</strong><p>付款前核对收款方，按收银台的准确应付金额支付，金额可能包含尾差。示例只记录状态，不执行发货、充值或退款。</p></div>
     <p id="notification-hint" class="muted"></p>
@@ -19,9 +19,9 @@
         <form id="order-form">
           <label>业务单号<input name="merchant_order_no" id="merchant-no" required maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._\-]*" autocomplete="off"></label>
           <p class="hint">同一笔订单重试时保留原单号和参数。</p>
-          <label>商品名称<input name="product_name" required maxlength="200" value="PerPay 接入演示"></label>
+          <label>商品名称<input name="product_name" required maxlength="200" value="StarPAY 接入演示"></label>
           <label>金额（元）<input name="amount" required inputmode="decimal" value="0.01" pattern="(0|[1-9][0-9]{0,2})(\.[0-9]{1,2})?"></label>
-          <p class="hint">示例限制 0.01–100.00 元，不代表 PerPay API 的金额上限。</p>
+          <p class="hint">示例限制 0.01–100.00 元，不代表 StarPAY API 的金额上限。</p>
           <label>备注（可选）<input name="note" maxlength="500" placeholder="仅用于自己的接入验证"></label>
           <label class="check"><input name="confirm_real_payment" type="checkbox" required><span>我了解这会创建真实收款订单。</span></label>
           <button id="create" type="submit" class="primary" disabled>创建订单</button>

@@ -132,6 +132,40 @@ describe("webhook outbound transport", () => {
     assert.match(result.resolvedAddressesFingerprint, /^[0-9a-f]{64}$/);
   });
 
+  it("sends form callbacks through the same pinned HTTPS transport", async () => {
+    const harness = createHarness();
+    const pending = harness.transport.post({ ...postInput(), body: Buffer.from("pid=1&sign=test"), contentType: "application/x-www-form-urlencoded" });
+    await harness.created;
+    const headers = harness.options?.headers as Record<string, string>;
+    assert.equal(headers["content-type"], "application/x-www-form-urlencoded");
+    assert.equal(headers.accept, "text/plain");
+    assert.equal(harness.options?.rejectUnauthorized, true);
+    assert.deepEqual(await invokeAllLookup(harness.options?.lookup), publicAddresses);
+    const response = new FakeIncomingResponse({ "content-type": ["text/plain"] });
+    harness.respond(response);
+    response.emit("data", Buffer.from("success"));
+    response.emit("end");
+    assert.equal((await pending).body.toString(), "success");
+  });
+
+  it("pins GET callbacks and rejects unsafe targets before a request", async () => {
+    const harness = createHarness();
+    const pending = harness.transport.get({ targetUrl: "https://hooks.example.test/receive?pid=1", timeoutMilliseconds: 1000 });
+    await harness.created;
+    assert.equal(harness.options?.method, "GET");
+    assert.equal(harness.options?.path, "/receive?pid=1");
+    assert.equal(harness.options?.rejectUnauthorized, true);
+    const headers = harness.options?.headers as Record<string, string>;
+    assert.equal(headers["content-length"], undefined);
+    assert.deepEqual(await invokeAllLookup(harness.options?.lookup), publicAddresses);
+    const response = new FakeIncomingResponse({ "content-type": ["text/plain"] });
+    harness.respond(response);
+    response.emit("data", Buffer.from("success"));
+    response.emit("end");
+    assert.equal((await pending).body.toString(), "success");
+    await assert.rejects(harness.transport.get({ targetUrl: "https://other.example.test/", timeoutMilliseconds: 1000 }), /origin/);
+  });
+
   for (const [code, transportCode] of [
     ["CERT_HAS_EXPIRED", "tls_verification_failed"],
     ["DEPTH_ZERO_SELF_SIGNED_CERT", "tls_verification_failed"],

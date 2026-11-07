@@ -68,7 +68,7 @@ export function inspectComposeContract(source) {
 
   const app = root.services.app;
   exactKeys(app, APP_KEYS, "Compose app service");
-  serviceEnvironment(app.environment, { PERPAY_SECRETS_DIR: "/run/perpay-secrets", PERPAY_PUBLIC_URL: "https://pay.example.com", PERPAY_TRUSTED_PROXY_CIDRS: "", PERPAY_SETUP_TOKEN_ENABLED: "false" }, "Compose app.environment");
+  serviceEnvironment(app.environment, { PERPAY_SECRETS_DIR: "/run/perpay-secrets", PERPAY_PUBLIC_URL: "https://pay.example.com", PERPAY_TRUSTED_PROXY_CIDRS: "", PERPAY_SETUP_TOKEN_ENABLED: "false", PERPAY_BASE_PATH: "/" }, "Compose app.environment");
   alias(document, ["services", "app", "ports", 0], "perpay-host-port", "app.ports[0]");
   alias(document, ["services", "app", "environment", "PERPAY_PUBLIC_URL"], "perpay-public-url", "app.environment.PERPAY_PUBLIC_URL");
   alias(document, ["services", "app", "environment", "PERPAY_TRUSTED_PROXY_CIDRS"], "perpay-trusted-proxy-cidrs", "app.environment.PERPAY_TRUSTED_PROXY_CIDRS");
@@ -76,7 +76,7 @@ export function inspectComposeContract(source) {
   array(app.ports, ["127.0.0.1:6190:6190"], "Compose app.ports");
   array(app.volumes, ["perpay-data:/data", "perpay-backups:/backups:ro", "perpay-secrets:/run/perpay-secrets"], "Compose app.volumes");
   checkCommon(app, "app");
-  array(app.healthcheck.test, ["CMD", "node", "-e", "fetch('http://127.0.0.1:6190/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"], "Compose app.healthcheck.test");
+  array(app.healthcheck.test, ["CMD", "node", "-e", "const b=process.env.PERPAY_BASE_PATH||'/'; fetch('http://127.0.0.1:6190'+(b==='/'?'':b)+'/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"], "Compose app.healthcheck.test");
   if (app.healthcheck.interval !== "30s" || app.healthcheck.timeout !== "5s" || app.healthcheck.start_period !== "5m" || app.healthcheck.retries !== 3) throw new Error("Compose app healthcheck settings are unsafe");
   checkLogging(app.logging, "Compose app.logging");
 

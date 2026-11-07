@@ -1,4 +1,5 @@
 import { checkoutHelpUrl } from "../../shared/checkout-help.ts";
+import { displaySystemName } from "../../shared/branding.ts";
 import type { PublicCheckoutProjection } from "../../orders/model.ts";
 import { checkoutFrontend } from "./checkout-frontend.ts";
 import {
@@ -30,6 +31,7 @@ export interface CheckoutPageInput {
   readonly qrImageUrl: string | null;
   readonly initialError: CheckoutPageInitialError | null;
   readonly showProductName?: boolean;
+  readonly basePath?: string;
 }
 
 export type CheckoutVisualState =
@@ -70,15 +72,15 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
   const missing = input.checkout === null && input.initialError?.status === 404;
   const order = input.checkout;
   const initial: CheckoutInitial = {
-    systemName: input.systemName ?? "PerPay",
+    systemName: displaySystemName(input.systemName),
     helpUrl: checkoutHelpUrl(input.helpUrl),
     serverTime: input.serverTime ?? Date.now(),
     demoMode: input.demoMode ?? false,
     showProductName: input.showProductName !== false,
-    apiUrl: missing ? "" : checkoutApiPath(input.checkoutToken),
+    apiUrl: missing ? "" : withBasePath(input.basePath ?? "/", checkoutApiPath(input.checkoutToken)),
     qrUrl: missing
       ? ""
-      : (input.qrImageUrl ?? checkoutQrPath(input.checkoutToken)),
+      : withBasePath(input.basePath ?? "/", input.qrImageUrl ?? checkoutQrPath(input.checkoutToken)),
     qrAvailable: input.qrImageUrl !== null,
     initialError: input.initialError,
     checkout: order
@@ -119,19 +121,23 @@ export function renderCheckoutPage(input: CheckoutPageInput): string {
     '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#ffffff"><meta name="robots" content="noindex, nofollow, noarchive"><title>' +
     escapeHtml(title) +
     '</title><script src="' +
-    checkoutFrontend.theme +
+    withBasePath(input.basePath ?? "/", checkoutFrontend.theme) +
     '"></script>' +
     checkoutFrontend.styles
-      .map((href) => '<link rel="stylesheet" href="' + href + '">')
+      .map((href) => '<link rel="stylesheet" href="' + withBasePath(input.basePath ?? "/", href) + '">')
       .join("") +
     '</head><body><div id="checkout-root" data-initial="' +
     escapeHtml(JSON.stringify(initial)) +
     '">' +
     checkoutFrontend.render(initial) +
     '</div><script type="module" src="' +
-    checkoutFrontend.script +
+    withBasePath(input.basePath ?? "/", checkoutFrontend.script) +
     '"></script></body></html>'
   );
+}
+
+function withBasePath(basePath: string, path: string): string {
+  return basePath === "/" ? path : `${basePath}${path}`;
 }
 function validateInput(input: CheckoutPageInput): void {
   if (input.checkout === null && input.initialError === null) {

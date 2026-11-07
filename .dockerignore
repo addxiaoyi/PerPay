@@ -6,6 +6,11 @@
 .playwright-cli/
 .playwright-mcp/
 .ui-audit/
+/release/
+/.codegraph/
+/.codex-shadow-check-*/
+**/__pycache__/
+*.private.json
 /%SystemDrive%/
 node_modules/
 **/node_modules/

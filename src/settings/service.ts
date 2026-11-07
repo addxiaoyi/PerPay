@@ -266,7 +266,7 @@ export class RuntimeSettingsService {
       })),
       advanced: { checkout_key_rotation_days: snapshot.advanced.checkoutKeyRotationDays, checkout_terminal_observation_seconds: snapshot.advanced.checkoutTerminalObservationSeconds },
       backup: { interval_seconds: snapshot.backup.intervalSeconds, keep_count: snapshot.backup.keepCount },
-      display: { system_name: snapshot.display.systemName ?? "PerPay", dashboard_chart_type: snapshot.display.dashboardChartType },
+      display: { system_name: snapshot.display.systemName ?? "StarPAY", dashboard_chart_type: snapshot.display.dashboardChartType },
       secrets: { provider_private_key: this.#store.secretMetadata("provider_private_key"), provider_public_key: this.#store.secretMetadata("provider_public_key") },
     };
   }
@@ -366,7 +366,7 @@ export class RuntimeSettingsService {
         keep_count: snapshot.backup?.keepCount ?? 7,
       },
       display: {
-        system_name: snapshot.display?.systemName ?? "PerPay",
+        system_name: snapshot.display?.systemName ?? "StarPAY",
         checkout_help_url: snapshot.display?.checkoutHelpUrl ?? null,
         checkout_show_product_name: snapshot.display?.checkoutShowProductName ?? true,
         dashboard_chart_type: snapshot.display?.dashboardChartType ?? "AREA",

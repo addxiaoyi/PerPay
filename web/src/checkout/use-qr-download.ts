@@ -8,7 +8,7 @@ import {
 export function useQrDownload(
   image: RefObject<HTMLImageElement | null>,
   available: boolean,
-  systemName = "PerPay",
+  systemName = "StarPAY",
 ) {
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState("");

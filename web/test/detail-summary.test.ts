@@ -51,7 +51,7 @@ describe("readable evidence without stronger financial claims", () => {
         ...event,
         details: { evidence_type: "AMOUNT_INFERRED" },
       }),
-    ).toBe("PerPay 按金额和付款时间推断");
+    ).toBe("StarPAY 按金额和付款时间推断");
     expect(eventExplanation({ ...event, details: {} })).toBeNull();
   });
   it("states both reminder visibility and financial status without a separate disclaimer", () => {

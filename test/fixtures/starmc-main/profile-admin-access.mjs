@@ -1,0 +1,1 @@
+export function profileAdminAccess(i,e){var t,r,n;return!i&&!e?!1:(i==null?void 0:i.role)==="superadmin"||(i==null?void 0:i.role)==="admin"||(t=i==null?void 0:i.roles)!=null&&t.some(s=>s==="superadmin"||s==="admin")||(r=e==null?void 0:e.roles)!=null&&r.some(s=>s==="superadmin"||s==="admin")?!0:!!((n=e==null?void 0:e.capabilities)!=null&&n.canManageUsers)}

@@ -1,10 +1,10 @@
 import { useSyncExternalStore } from "react";
-import { DEFAULT_SYSTEM_NAME } from "../../src/shared/branding";
+import { DEFAULT_SYSTEM_NAME, displaySystemName } from "../../src/shared/branding";
 
 const event = "perpay:system-name-changed";
 export function getSystemName(): string {
   const name = typeof document === "undefined" ? null : document.querySelector('meta[name="perpay-system-name"]')?.getAttribute("content");
-  return name || DEFAULT_SYSTEM_NAME;
+  return displaySystemName(name);
 }
 export function setSystemName(name: string): void {
   if (!name || name === getSystemName()) return;

@@ -6,6 +6,7 @@ import { createAsyncBackupHealthProvider } from "./backup/health.ts";
 import { loadConfig } from "./config.ts";
 import { AppDatabase } from "./database/database.ts";
 import { createApp } from "./http/app.ts";
+import { createEPayRuntime } from "./epay-compat/gateway-runtime.ts";
 import { IdentityService } from "./identity/service.ts";
 import { hardenProcessFileCreation } from "./infrastructure/storage/permissions.ts";
 import { LedgerStore } from "./ledger/index.ts";
@@ -65,11 +66,17 @@ settings = new RuntimeSettingsService({
   onApplied: (snapshot) => runtime.apply(settingsStore.siteStore() ? settingsStore.instanceSnapshot() : snapshot),
 });
 
+let epayGateway: ReturnType<typeof createEPayRuntime> | undefined;
 try {
   await identity.initialize();
   const snapshot = settings.initialize();
   await runtime.start(settingsStore.siteStore() ? settingsStore.instanceSnapshot() : snapshot);
+  if (config.epayGateway) {
+    epayGateway = createEPayRuntime({ database, masterKey: config.masterKey, config: config.epayGateway, identityOrigin: config.merchantShadowIdentityOrigin, publicOrigin: config.publicOrigin, basePath: config.basePath, onError: event => console.error(JSON.stringify({ level: "error", event })) });
+    await epayGateway.start();
+  }
 } catch (error) {
+  await Promise.allSettled([runtime.stop(), epayGateway?.close()]);
   database.close();
   throw error;
 }
@@ -77,6 +84,8 @@ try {
 const app = createApp({
   config,
   database,
+  ...(epayGateway ? { epayGateway } : {}),
+  ...(config.merchantShadowIdentityOrigin ? { merchantWorkspace: { identityOrigin: config.merchantShadowIdentityOrigin, includeMainOrders: config.merchantShadowMainOrders, includeShadowBalance: config.merchantShadowBalance } } : {}),
   identity,
   onSetupToken: (token) => {
     console.log(JSON.stringify({
@@ -144,7 +153,7 @@ server.once("error", (error) => {
   if (shuttingDown) return;
   shuttingDown = true;
   logError("server_failed", error);
-  void runtime.stop().finally(() => {
+  void stopRuntimes().finally(() => {
     closeDatabase();
     process.exitCode = 1;
   });
@@ -154,7 +163,7 @@ function shutdown(signal: NodeJS.Signals): void {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(JSON.stringify({ level: "info", event: "shutdown_started", signal }));
-  const backgroundTasksStopped = runtime.stop();
+  const backgroundTasksStopped = stopRuntimes();
   let finalized = false;
   const finalize = (error?: Error) => {
     if (finalized) return;
@@ -172,6 +181,14 @@ function shutdown(signal: NodeJS.Signals): void {
     if ("closeIdleConnections" in server) server.closeIdleConnections();
   } catch (error) {
     finalize(error instanceof Error ? error : new Error("HTTP server shutdown failed"));
+  }
+}
+
+async function stopRuntimes(): Promise<void> {
+  const stopped = await Promise.allSettled([runtime.stop(), epayGateway?.close()]);
+  for (const outcome of stopped) if (outcome.status === "rejected") {
+    logError("runtime_shutdown_failed", outcome.reason);
+    process.exitCode = 1;
   }
 }
 

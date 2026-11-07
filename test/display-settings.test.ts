@@ -40,7 +40,7 @@ it("persists validated display settings with CSRF, revisions and audit without c
         body: JSON.stringify(body),
       });
     assert.deepEqual(original.display, {
-      system_name: "PerPay",
+      system_name: "StarPAY",
       dashboard_chart_type: "AREA",
     });
     assert.equal(
@@ -185,8 +185,8 @@ it("upgrades schema 23 with presentation defaults while preserving revisions, co
       assert.equal(after.revision, before.revision);
       assert.equal(after.payment_revision, before.payment_revision);
       assert.deepEqual(after.provider, before.provider);
-      assert.deepEqual(after.display, { system_name: "PerPay", dashboard_chart_type: "AREA" });
-      assert.deepEqual(settings.siteStore()!.get("default")!.configuration.policy.display, { checkout_name: "PerPay", checkout_help_url: null, checkout_show_product_name: true });
+      assert.deepEqual(after.display, { system_name: "StarPAY", dashboard_chart_type: "AREA" });
+      assert.deepEqual(settings.siteStore()!.get("default")!.configuration.policy.display, { checkout_name: "StarPAY", checkout_help_url: null, checkout_show_product_name: true });
       assert.deepEqual(snapshot(upgraded), evidence);
       assert.equal(upgraded.integrityCheck().ok, true);
     } finally {
@@ -330,8 +330,8 @@ it("validates and persists a public system name while legacy display requests pr
     assert.equal(services.settings.display().systemName, "星河收款");
     assert.equal((await save({ ...input, revision: input.revision + 1 })).status, 200);
     assert.equal(services.settings.instanceView().display.system_name, "星河收款");
-    assert.equal((await save({ ...input, revision: input.revision + 2, system_name: "PerPay" })).status, 200);
-    assert.equal(services.settings.instanceView().display.system_name, "PerPay");
+    assert.equal((await save({ ...input, revision: input.revision + 2, system_name: "StarPAY" })).status, 200);
+    assert.equal(services.settings.instanceView().display.system_name, "StarPAY");
   });
 });
 

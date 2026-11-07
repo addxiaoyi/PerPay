@@ -62,11 +62,11 @@ export function LedgerFacts({
       <DetailCredentials title="核对凭据" headingLevel={4} items={[
         ["支付宝订单号", entry.provider_order_no ? <CopyValue value={entry.provider_order_no} label="复制支付宝订单号" /> : "未提供"],
         ...(entry.merchant_order_no ? [["支付宝商户单号", <CopyValue value={entry.merchant_order_no} label="复制支付宝商户单号" />] as const] : []),
-        ["内部流水编号（PerPay）", <CopyValue value={entry.ledger_entry_id} label="复制内部流水编号（PerPay）" />],
+        ["内部流水编号（StarPAY）", <CopyValue value={entry.ledger_entry_id} label="复制内部流水编号（StarPAY）" />],
       ]} />
     </>;
     return showHeading ? <section className="flex min-w-0 flex-col gap-4" aria-labelledby={titleId}>
-      <h3 id={titleId} className="text-sm font-medium">支付宝流水与 PerPay 记录</h3>
+      <h3 id={titleId} className="text-sm font-medium">支付宝流水与 StarPAY 记录</h3>
       {grouped}
     </section> : grouped;
   }
@@ -302,7 +302,7 @@ export function MatchCard({
         <CardDescription className="record-list-meta">
           {match.evidence_type === "MANUAL"
             ? "管理员人工关联 · " + (operation?.actor_id ?? "未记录")
-            : "PerPay 按金额和付款时间推断"}{" "}
+            : "StarPAY 按金额和付款时间推断"}{" "}
           · <ListDateTime value={operation?.created_at ?? match.created_at} inline />
         </CardDescription>
         <CardAction>
@@ -347,7 +347,7 @@ function MatchProcessingHistory({ match }: { match: PaymentMatchDetail }) {
     <section aria-label={manual ? "人工关联记录" : "关联记录"} className="flex min-w-0 flex-col gap-4">
       <h4 className="text-sm font-medium">{manual ? "人工关联记录" : "关联记录"}</h4>
       <DetailFields density="comfortable" layout="flow" wide={["关联理由"]} items={[
-        ["关联方式", manual ? "管理员人工关联" : "PerPay 按金额和付款时间推断"],
+        ["关联方式", manual ? "管理员人工关联" : "StarPAY 按金额和付款时间推断"],
         ["关联时间", dateTime(operation?.created_at ?? match.created_at)],
         ...(manual ? [["关联操作人", operation?.actor_id ?? "未记录"] as const] : []),
         ...(operation?.reason ? [["关联理由", operation.reason] as const] : []),
@@ -555,7 +555,7 @@ export function ExceptionCard({
             identifiers={[
               ["异常编号", exception.exception_id],
               ["客户端 ID", order?.api_client_id ?? clientId],
-              ["内部流水编号（PerPay）", entry?.ledger_entry_id ?? exception.ledger_entry_id],
+              ["内部流水编号（StarPAY）", entry?.ledger_entry_id ?? exception.ledger_entry_id],
               ["内部订单编号", order?.order_id ?? exception.order_id],
               ["可能匹配记录编号", candidate?.candidate_id ?? exception.candidate_id],
             ]}

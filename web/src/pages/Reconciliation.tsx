@@ -499,7 +499,7 @@ function ReconciliationList({
     },
     {
       id: "status",
-      label: "PerPay 处理状态",
+      label: "StarPAY 处理状态",
       align: "center",
       layout: "status",
       summaryDefault: true,
@@ -577,12 +577,12 @@ function ReconciliationList({
           modes: [
             {
               value: "ledger",
-              label: "内部流水编号（PerPay）",
-              placeholder: "输入完整的 PerPay 内部流水编号",
+              label: "内部流水编号（StarPAY）",
+              placeholder: "输入完整的 StarPAY 内部流水编号",
               pattern: resourceIdPattern.source,
             },
           ],
-          inputLabel: "内部流水编号（PerPay）",
+          inputLabel: "内部流水编号（StarPAY）",
           inputName: "ledger-lookup",
           onSubmit: (_mode, value) => {
             if (resourceIdPattern.test(value))

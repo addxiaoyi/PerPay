@@ -162,7 +162,7 @@ export function DataTable({
     },
   ];
   if (control) columns.push({
-    id: "payment_confirmed_at", label: "PerPay 确认时间",
+    id: "payment_confirmed_at", label: "StarPAY 确认时间",
     align: "center",
     layout: "datetime", summaryDefault: false,
     responsive: { minWidthRem: 75, basis: "container" },

@@ -10,6 +10,7 @@ export const HTTP_ERROR_CODES = Object.freeze([
   "site_collection_required",
   "site_collection_invalid",
   "admin_ip_not_allowed",
+  "admin_identity_required",
   "admin_operation_conflict",
   "refund_mark_version_conflict",
   "refund_mark_not_allowed",

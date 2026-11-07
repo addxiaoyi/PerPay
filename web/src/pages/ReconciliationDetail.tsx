@@ -236,7 +236,7 @@ function LedgerDetail({ resourceId }: { resourceId: string }) {
                 <CardTitle role="heading" aria-level={2}>
                   支付宝流水
                 </CardTitle>
-                <CardDescription>PerPay 处理状态：{label(data.state)}</CardDescription>
+                <CardDescription>StarPAY 处理状态：{label(data.state)}</CardDescription>
               </CardHeader>
               <CardContent className="flex min-w-0 flex-col gap-4">
                 <LedgerFacts entry={data} />
@@ -246,7 +246,7 @@ function LedgerDetail({ resourceId }: { resourceId: string }) {
                 <RecordTools
                   data={data}
                   identifiers={[
-                    ["内部流水编号（PerPay）", resourceId],
+                    ["内部流水编号（StarPAY）", resourceId],
                     ["支付宝流水号", data.external_event_id],
                   ]}
                   label="流水记录操作"

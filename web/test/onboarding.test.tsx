@@ -139,8 +139,8 @@ describe("first collection onboarding", () => {
       expect(
         await screen.findByText(
           pendingKey
-            ? "支付宝公钥：上传新应用公钥后，从支付宝重新复制，下一步填入 PerPay。"
-            : "支付宝公钥：上传应用公钥后，从支付宝复制，下一步填入 PerPay。",
+            ? "支付宝公钥：上传新应用公钥后，从支付宝重新复制，下一步填入 StarPAY。"
+            : "支付宝公钥：上传应用公钥后，从支付宝复制，下一步填入 StarPAY。",
         ),
       ).toBeVisible();
       expect(screen.queryByText(/它不是应用公钥/)).not.toBeInTheDocument();
@@ -319,7 +319,7 @@ describe("first collection onboarding", () => {
   it("reuses an existing API key and does not rotate it on revisit", async () => {
     const view = mountOnboarding({ stage: 4, path: onboardingPath("api") });
     expect(
-      await screen.findByRole("button", { name: "查看PerPay API 密钥" }),
+      await screen.findByRole("button", { name: "查看StarPAY API 密钥" }),
     ).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "生成 API 密钥" }),
@@ -365,7 +365,7 @@ describe("first collection onboarding", () => {
   });
   it("clears revealed API plaintext after sixty seconds without advancing", async () => {
     const view = mountOnboarding({ stage: 4, path: onboardingPath("api") });
-    const viewKey = await screen.findByRole("button", { name: "查看PerPay API 密钥" });
+    const viewKey = await screen.findByRole("button", { name: "查看StarPAY API 密钥" });
     vi.useFakeTimers();
     fireEvent.click(viewKey);
     await act(async () => {
@@ -375,7 +375,7 @@ describe("first collection onboarding", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(60000);
     });
-    expect(screen.queryByRole("dialog", { name: "PerPay API 密钥" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "StarPAY API 密钥" })).not.toBeInTheDocument();
     expect(screen.queryByText(syntheticSecret)).not.toBeInTheDocument();
     expect(view.router.state.location.pathname).toBe("/settings/security");
   });

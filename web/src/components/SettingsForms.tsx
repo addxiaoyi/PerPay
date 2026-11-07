@@ -695,7 +695,7 @@ export function SettingsEditor({
             name="system_name"
             required
             maxLength={40}
-            defaultValue={initialSettings.display?.system_name ?? "PerPay"}
+            defaultValue={initialSettings.display?.system_name ?? "StarPAY"}
             aria-invalid={!!fieldErrors.system_name}
             aria-describedby={
               fieldErrors.system_name ? "system-name-error" : undefined
@@ -782,7 +782,7 @@ export function SettingsEditor({
   const panels: Array<{ title: string; description?: string; fields: ReactNode }> =
     section === "provider" ? [{ title: "开放平台应用", fields: providerIdentity }]
     : section === "collection" ? [{ title: "收款码", fields: collectionIdentity }]
-    : section === "collection-policy" ? [{ title: "PerPay 查账设置", fields: providerCollection }]
+    : section === "collection-policy" ? [{ title: "StarPAY 查账设置", fields: providerCollection }]
     : section === "display" ? [{ title: "界面显示", fields: displayFields }]
     : [{ title: sections.find(([value]) => value === section)?.[1] ?? "设置", ...(section === "backup" ? { description: "恢复需要数据库备份和主密钥。" } : {}), fields: section === "notifications" ? notificationFields : section === "backup" ? backupFields : advancedFields }];
 

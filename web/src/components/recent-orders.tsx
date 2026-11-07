@@ -80,7 +80,7 @@ function OrderTimes({ order }: { order: AdminOrderSummary }) {
       </div>
       {order.payment_confirmed_at && (
         <div className="overview-order-time-entry">
-          <dt>PerPay 确认</dt>
+          <dt>StarPAY 确认</dt>
           <dd><ListDateTime value={order.payment_confirmed_at} inline /></dd>
         </div>
       )}

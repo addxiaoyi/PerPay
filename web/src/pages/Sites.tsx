@@ -432,10 +432,10 @@ function SiteEditor({
                 <CopyValue value={saved.client_id} label="复制客户端 ID" />
               </Field>
               <Field>
-                <FieldLabel>PerPay 地址</FieldLabel>
+                <FieldLabel>StarPAY 地址</FieldLabel>
                 <CopyValue
                   value={window.location.origin}
-                  label="复制 PerPay 地址"
+                  label="复制 StarPAY 地址"
                 />
               </Field>
             </FieldGroup>

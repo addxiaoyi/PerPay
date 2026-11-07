@@ -152,7 +152,7 @@ describe("administrator authentication", () => {
         <AuthPage onLogin={vi.fn()} />,
         "/" + page,
       );
-      const brand = screen.getByRole("link", { name: "PerPay" });
+      const brand = screen.getByRole("link", { name: "StarPAY" });
       expect(brand).toHaveAttribute("href", "/");
       expect(brand.querySelector("img")).toBeNull();
       expect(
@@ -817,7 +817,7 @@ describe("state-changing workflows", () => {
     const user = userEvent.setup();
     renderPage(<SecuritySettings settings={configured} onSaved={vi.fn()} />);
     await user.click(
-      screen.getByRole("button", { name: "查看PerPay API 密钥" }),
+      screen.getByRole("button", { name: "查看StarPAY API 密钥" }),
     );
     expect(
       screen.getByText(

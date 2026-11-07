@@ -62,7 +62,7 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
           : item.ledger_entry_id;
         const ledgerLabel = item.type === "LEDGER_CONFLICT" && item.external_event_id
           ? "支付宝流水号"
-          : "内部流水编号（PerPay）";
+          : "内部流水编号（StarPAY）";
         const reason = itemReason(item);
         const action = workActions[item.type];
         return (
@@ -113,10 +113,10 @@ export function OverviewWorkItems({ items }: { items: readonly AdminWorkItem[] }
                     <Link
                       className="list-code"
                       title={orderId}
-                      aria-label={"查看订单，内部订单编号（PerPay）：" + orderId}
+                      aria-label={"查看订单，内部订单编号（StarPAY）：" + orderId}
                       to={"/orders/" + orderId}
                     >
-                      内部订单编号（PerPay） {orderId}
+                      内部订单编号（StarPAY） {orderId}
                     </Link>
                   )}
                   {ledgerIdentity && (

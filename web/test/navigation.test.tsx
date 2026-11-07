@@ -325,7 +325,7 @@ describe("navigation and draft protection", () => {
     const { container, fetchMock } = mount();
     await screen.findByLabelText("查账有效时限（秒）");
     const user = userEvent.setup();
-    expect(screen.getByRole("link", { name: "PerPay" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "StarPAY" })).toBeVisible();
     expect(
       container.querySelector(
         ".topbar, .instance-label, .sidebar-version, .workspace-footer",

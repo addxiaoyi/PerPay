@@ -1,0 +1,30 @@
+import assert from "node:assert/strict";
+import { generateKeyPairSync, verify } from "node:crypto";
+import { it } from "node:test";
+import { buildAlipayPrecreate, verifyAlipayPrecreate } from "../src/epay-compat/alipay-precreate.ts";
+import { createV3ResponseSignature } from "../src/infrastructure/alipay/v3.ts";
+
+it("signs exact-amount Alipay precreate requests and accepts only authenticated matching QR responses", () => {
+  const merchant = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const platform = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const order = { tradeNo: "order_1", amountCents: 101, subject: "fixture", notifyUrl: "https://gateway.example.test/notify" };
+  const request = buildAlipayPrecreate(order, { appId: "app-1", privateKey: merchant.privateKey, clock: () => 1_800_000_000_000, nonceFactory: () => "nonce" });
+  assert.equal(request.method, "POST");
+  assert.equal(request.path, "/v3/alipay/trade/precreate");
+  assert.deepEqual(JSON.parse(request.body), { out_trade_no: "order_1", total_amount: "1.01", subject: "fixture", notify_url: order.notifyUrl });
+  const authorization = String(request.headers.authorization);
+  const match = /^ALIPAY-SHA256withRSA (.+),sign=(.+)$/.exec(authorization);
+  assert.ok(match);
+  assert.equal(verify("RSA-SHA256", Buffer.from(`${match[1]}\nPOST\n${request.path}\n${request.body}\n`), merchant.publicKey, Buffer.from(match[2]!, "base64")), true);
+  const response = (body: string, status = 200) => ({ status, body: Buffer.from(body), headers: { "alipay-timestamp": "1800000000", "alipay-nonce": "nonce", "alipay-signature": createV3ResponseSignature(body, "1800000000", "nonce", platform.privateKey) } });
+  const raw = JSON.stringify({ out_trade_no: "order_1", qr_code: "https://qr.alipay.com/fixture" });
+  assert.deepEqual(verifyAlipayPrecreate(response(raw), { tradeNo: order.tradeNo, platformKey: platform.publicKey }), { tradeNo: order.tradeNo, qrCode: "https://qr.alipay.com/fixture" });
+  assert.throws(() => verifyAlipayPrecreate({ ...response(raw), body: Buffer.from(`${raw} `) }, { tradeNo: order.tradeNo, platformKey: platform.publicKey }), /signature/);
+  assert.throws(() => verifyAlipayPrecreate(response(JSON.stringify({ out_trade_no: "other", qr_code: "https://qr.alipay.com/fixture" })), { tradeNo: order.tradeNo, platformKey: platform.publicKey }), /match/);
+  assert.throws(() => verifyAlipayPrecreate(response(JSON.stringify({ out_trade_no: "order_1", qr_code: "https://other.example/fixture" })), { tradeNo: order.tradeNo, platformKey: platform.publicKey }), /QR code/);
+  assert.throws(() => verifyAlipayPrecreate(response(raw, 500), { tradeNo: order.tradeNo, platformKey: platform.publicKey }), /reconciliation/);
+  assert.throws(() => buildAlipayPrecreate({ ...order, amountCents: 0 }, { appId: "app-1", privateKey: merchant.privateKey }), /order/);
+  assert.throws(() => buildAlipayPrecreate({ ...order, amountCents: 10_000_000_001 }, { appId: "app-1", privateKey: merchant.privateKey }), /order/);
+  assert.throws(() => buildAlipayPrecreate({ ...order, tradeNo: "invalid-order" }, { appId: "app-1", privateKey: merchant.privateKey }), /order/);
+  assert.throws(() => buildAlipayPrecreate({ ...order, notifyUrl: "http://gateway.example.test" }, { appId: "app-1", privateKey: merchant.privateKey }), /URL/);
+});

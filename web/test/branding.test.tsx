@@ -16,13 +16,13 @@ function Name() { return <output>{useSystemName()}</output>; }
 describe("custom system branding", () => {
   it("updates subscribers from settings and retains the public name on logout", () => {
     render(<Name />);
-    expect(screen.getByRole("status")).toHaveTextContent("PerPay");
+    expect(screen.getByRole("status")).toHaveTextContent("StarPAY");
     act(() => queryClient.setQueryData(["settings"], { data: { ...settings, display: { ...settings.display, system_name: "星河收款" } } }));
     expect(screen.getByRole("status")).toHaveTextContent("星河收款");
     act(() => queryClient.clear());
     expect(getSystemName()).toBe("星河收款");
-    act(() => setSystemName("PerPay"));
-    expect(screen.getByRole("status")).toHaveTextContent("PerPay");
+    act(() => setSystemName("StarPAY"));
+    expect(screen.getByRole("status")).toHaveTextContent("StarPAY");
   });
 
   it("keeps the name as a draft until a successful save and sends it with display settings", async () => {
@@ -34,11 +34,11 @@ describe("custom system branding", () => {
     </MemoryRouter></QueryClientProvider>);
     const user = userEvent.setup();
     const input = screen.getByRole("textbox", { name: "支付系统名称" });
-    expect(input).toHaveValue("PerPay");
+    expect(input).toHaveValue("StarPAY");
     expect(input).toHaveAttribute("maxlength", "40");
     await user.clear(input);
     await user.type(input, "星河收款");
-    expect(getSystemName()).toBe("PerPay");
+    expect(getSystemName()).toBe("StarPAY");
     expect(requests).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("星河收款"));
@@ -64,7 +64,7 @@ describe("custom system branding", () => {
       apiUrl: "", qrUrl: "", qrAvailable: false, serverTime: Date.now() }} />);
     expect(screen.getByText("星河收款")).toBeVisible();
     expect(document.title).toContain("星河收款 收银台");
-    expect(document.title).not.toContain("PerPay");
+    expect(document.title).not.toContain("StarPAY");
   });
 
   it("forwards escaped backend branding into the Vite development page without interpreting replacement tokens", async () => {

@@ -129,7 +129,7 @@ describe("ordinary administrator views", () => {
       await screen.findByRole("heading", { name: "可能匹配的订单" }),
     ).toBeVisible();
     expect(view.router.state.location.pathname).toBe("/reconciliation/transactions/" + ledgerId);
-    expect(screen.getByText("PerPay 记录状态")).toBeVisible();
+    expect(screen.getByText("StarPAY 记录状态")).toBeVisible();
     expect(screen.getByText("未分配", { exact: true })).toBeVisible();
     expect(screen.queryByText(/规则版本/)).not.toBeInTheDocument();
   });

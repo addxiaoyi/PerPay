@@ -96,6 +96,12 @@ export interface WebhookTransport {
     readonly targetUrl: string;
     readonly body: Buffer;
     readonly headers: Readonly<Record<string, string>>;
+    readonly contentType?: "application/json" | "application/x-www-form-urlencoded";
+    readonly timeoutMilliseconds: number;
+    readonly signal?: AbortSignal | undefined;
+  }): Promise<WebhookTransportResponse>;
+  get?(input: {
+    readonly targetUrl: string;
     readonly timeoutMilliseconds: number;
     readonly signal?: AbortSignal | undefined;
   }): Promise<WebhookTransportResponse>;
@@ -193,12 +199,36 @@ export class NodeWebhookTransport implements WebhookTransport {
     });
   }
 
+  validateTarget(targetUrl: string): void {
+    this.#parseTarget(targetUrl);
+  }
+
   async post(input: {
     readonly targetUrl: string;
     readonly body: Buffer;
     readonly headers: Readonly<Record<string, string>>;
+    readonly contentType?: "application/json" | "application/x-www-form-urlencoded";
     readonly timeoutMilliseconds: number;
     readonly signal?: AbortSignal | undefined;
+  }): Promise<WebhookTransportResponse> {
+    if (input.contentType !== undefined && input.contentType !== "application/json" && input.contentType !== "application/x-www-form-urlencoded") {
+      throw new WebhookTransportError({ code: "request_headers_invalid", message: "Unsupported webhook content type", retryable: false });
+    }
+    return this.#send({ ...input, method: "POST" });
+  }
+
+  async get(input: { readonly targetUrl: string; readonly timeoutMilliseconds: number; readonly signal?: AbortSignal | undefined }): Promise<WebhookTransportResponse> {
+    return this.#send({ ...input, method: "GET", body: Buffer.alloc(0), headers: {} });
+  }
+
+  async #send(input: {
+    readonly targetUrl: string;
+    readonly body: Buffer;
+    readonly headers: Readonly<Record<string, string>>;
+    readonly contentType?: "application/json" | "application/x-www-form-urlencoded";
+    readonly timeoutMilliseconds: number;
+    readonly signal?: AbortSignal | undefined;
+    readonly method: "GET" | "POST";
   }): Promise<WebhookTransportResponse> {
     if (
       !Number.isSafeInteger(input.timeoutMilliseconds) ||
@@ -230,7 +260,9 @@ export class NodeWebhookTransport implements WebhookTransport {
       addresses,
       addressesFingerprint,
       body: input.body,
+      method: input.method,
       headers: input.headers,
+      contentType: input.contentType ?? "application/json",
       deadline,
       signal: input.signal,
       dependencies: this.#dependencies,
@@ -349,7 +381,9 @@ function requestPinnedAddresses(input: {
   readonly addresses: readonly ResolvedAddress[];
   readonly addressesFingerprint: string;
   readonly body: Buffer;
+  readonly method: "GET" | "POST";
   readonly headers: Readonly<Record<string, string>>;
+  readonly contentType: "application/json" | "application/x-www-form-urlencoded";
   readonly deadline: number;
   readonly signal?: AbortSignal | undefined;
   readonly dependencies: Dependencies;
@@ -404,9 +438,8 @@ function requestPinnedAddresses(input: {
       const headers: Record<string, string> = {
         ...normalizeExtensionHeaders(input.headers, input.addressesFingerprint),
         host: input.endpoint.host,
-        "content-length": String(input.body.byteLength),
-        "content-type": "application/json",
-        accept: "application/json",
+        ...(input.method === "POST" ? { "content-length": String(input.body.byteLength), "content-type": input.contentType } : {}),
+        accept: input.method === "GET" || input.contentType !== "application/json" ? "text/plain" : "application/json",
         "accept-encoding": "identity",
         "user-agent": ALLOWED_USER_AGENT,
         connection: "close",
@@ -417,7 +450,7 @@ function requestPinnedAddresses(input: {
           hostname: endpointHost,
           port: input.endpoint.port || 443,
           path: `${input.endpoint.pathname}${input.endpoint.search}`,
-          method: "POST",
+          method: input.method,
           headers,
           servername: endpointHost,
           rejectUnauthorized: true,
@@ -543,7 +576,7 @@ function requestPinnedAddresses(input: {
           resolvedAddressesFingerprint: input.addressesFingerprint,
         }));
       });
-      request.write(input.body);
+      if (input.method === "POST") request.write(input.body);
       request.end();
     } catch (cause) {
       finishError(cause instanceof WebhookTransportError

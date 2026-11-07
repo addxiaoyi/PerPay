@@ -228,7 +228,7 @@ test("exception inline tools and manual confirmation preserve copy, scope and ke
     await expect(technical).toHaveCount(0);
     await expect(tools).toBeFocused();
     const credentials = card.getByRole("region", { name: "核对凭据", exact: true });
-    await credentials.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true }).click();
+    await credentials.getByRole("button", { name: "复制内部流水编号（StarPAY）", exact: true }).click();
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(exception.ledger_entry_id);
     const action = card.getByRole("button", { name: "人工关联收款", exact: true });
     await action.focus();

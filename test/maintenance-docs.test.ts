@@ -83,7 +83,7 @@ function inspectFromDocumentation(action: string, directories: ReturnType<typeof
 describe("maintenance documentation version contract", () => {
   it("keeps the current release notes and maintenance version aligned with the build", () => {
     const notes = readFileSync(new URL(`../docs/releases/v${APP_VERSION}.md`, import.meta.url), "utf8");
-    assert.ok(notes.includes(`# PerPay ${APP_VERSION}`));
+    assert.ok(notes.includes(`# StarPAY ${APP_VERSION}`));
     const current = readFileSync(new URL("../docs/releases/unreleased.md", import.meta.url), "utf8");
     assert.ok(current.includes(APP_VERSION));
     assert.ok(current.includes(`(v${APP_VERSION}.md)`));

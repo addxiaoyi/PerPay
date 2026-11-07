@@ -12,10 +12,14 @@ const MASTER_KEY = "0123456789abcdef".repeat(4);
 describe("deployment configuration", () => {
   it("loads the minimal deployment configuration with port 6190 defaults", () => {
     const config = loadConfig({ PERPAY_MASTER_KEY: MASTER_KEY });
+    assert.equal(config.merchantShadowIdentityOrigin, undefined);
+    assert.equal(config.merchantShadowMainOrders, false);
+    assert.equal(config.merchantShadowBalance, false);
 
     assert.equal(config.host, "0.0.0.0");
     assert.equal(config.port, 6190);
     assert.equal(config.publicOrigin, "http://localhost:6190");
+    assert.equal(config.basePath, "/");
     assert.equal(config.secureCookies, false);
     assert.equal(config.setupTokenEnabled, false);
     assert.deepEqual(config.trustedProxy.cidrs, []);
@@ -26,10 +30,13 @@ describe("deployment configuration", () => {
     assert.deepEqual(Object.keys(config).sort(), [
       "backupDir",
       "backupIntervalMilliseconds",
+      "basePath",
       "dataDir",
       "databasePath",
       "host",
       "masterKey",
+      "merchantShadowBalance",
+      "merchantShadowMainOrders",
       "port",
       "publicOrigin",
       "secureCookies",
@@ -66,6 +73,15 @@ describe("deployment configuration", () => {
       loadConfig({ PERPAY_MASTER_KEY: uppercase }).masterKey,
       Buffer.from(uppercase, "hex"),
     );
+  });
+
+  it("accepts a normalized public base path and rejects unsafe paths", () => {
+    assert.equal(loadConfig({ PERPAY_MASTER_KEY: MASTER_KEY, PERPAY_BASE_PATH: "/pay" }).basePath, "/pay");
+    assert.equal(loadConfig({ PERPAY_MASTER_KEY: MASTER_KEY, PERPAY_BASE_PATH: "/pay/v1" }).basePath, "/pay/v1");
+    for (const value of ["", "pay", "/", "/pay/", "/pay//v1", "/pay?x=1", "/pay#x", "/pay/../admin"]) {
+      if (value === "/") continue;
+      assert.throws(() => loadConfig({ PERPAY_MASTER_KEY: MASTER_KEY, PERPAY_BASE_PATH: value }), /PERPAY_BASE_PATH/u);
+    }
   });
 
   it("generates and reuses a master key in the configured secrets directory", () => {

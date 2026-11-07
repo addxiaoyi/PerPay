@@ -14,7 +14,7 @@ import {
 
 const policy = (): SitePolicy => ({
   orders: { order_ttl_seconds: 300, amount_offset_maximum_cents: 99, amount_reuse_cooldown_seconds: 60, pending_order_limit: null },
-  display: { checkout_name: "PerPay", checkout_help_url: null, checkout_show_product_name: true },
+  display: { checkout_name: "StarPAY", checkout_help_url: null, checkout_show_product_name: true },
   notification_delivery: { timeout_milliseconds: 5000, maximum_attempts: 12, retry_base_seconds: 5, retry_maximum_seconds: 3600 },
 });
 const configuration = () => ({ name: "网站 A", accepting_orders: true, notifications_enabled: false, notification_origin: null as string | null, return_origin: null as string | null, policy: policy() });
@@ -30,8 +30,8 @@ describe("complete website configuration", () => {
     siteA.orders.order_ttl_seconds = 600;
     template.display.checkout_name = "new template";
     assert.equal(siteB.orders.order_ttl_seconds, 300);
-    assert.equal(siteA.display.checkout_name, "PerPay");
-    assert.equal(siteB.display.checkout_name, "PerPay");
+    assert.equal(siteA.display.checkout_name, "StarPAY");
+    assert.equal(siteB.display.checkout_name, "StarPAY");
   });
   it("rejects omitted/null policy sections instead of inheriting defaults", () => {
     for (const key of ["orders", "display", "notification_delivery"] as const) {

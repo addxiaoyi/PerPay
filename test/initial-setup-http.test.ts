@@ -408,7 +408,7 @@ async function createFixture(clock: () => number = Date.now, tokenMode: "true" |
   settings.initialize();
   const orders = new OrderService(database, () => settings.instanceSnapshot());
   const issuedTokens: string[] = [];
-  const recreateApp = (setupTokenEnabled = config.setupTokenEnabled) => createApp({
+  const recreateApp = (setupTokenEnabled = config.setupTokenEnabled, merchantWorkspace?: { identityOrigin: string; identityFetch?: typeof fetch }) => createApp({
     config: { ...config, setupTokenEnabled },
     database,
     identity,
@@ -416,6 +416,7 @@ async function createFixture(clock: () => number = Date.now, tokenMode: "true" |
     orders,
     startedAt: new Date(0),
     onSetupToken: (token: string) => issuedTokens.push(token),
+    ...(merchantWorkspace ? { merchantWorkspace } : {}),
   });
   const app = recreateApp();
   return {
@@ -431,6 +432,47 @@ async function createFixture(clock: () => number = Date.now, tokenMode: "true" |
     },
   };
 }
+
+it("requires a verified StarMC superadministrator to initialize a main-site-linked instance", async () => {
+  const fixture = await createFixture(Date.now, "false");
+  try {
+    fixture.database.write((sql) => sql.exec(
+      "INSERT INTO epay_merchant_accounts VALUES(1,'One',100,1,500,1,1); INSERT INTO epay_merchant_bindings VALUES('b1','api-1','main-1',1,1,1)",
+    ));
+    let mismatchApi = true;
+    const identityFetch: typeof fetch = async (request, init) => {
+      const url = new URL(String(request));
+      assert.equal(url.origin, "http://127.0.0.1:8787");
+      assert.equal(url.pathname, "/api/merchant/access");
+      assert.equal(url.searchParams.get("merchantId"), "main-1");
+      const cookie = new Headers(init?.headers).get("cookie");
+      if (cookie === "session=superadmin") return Response.json({
+        ok: true, merchantId: "main-1", apiId: mismatchApi ? "wrong-api" : "api-1", role: "admin", userId: "root-id",
+      });
+      if (cookie === "session=owner") return Response.json({ ok: true, merchantId: "main-1", apiId: "api-1", role: "owner", userId: "owner-id" });
+      return Response.json({ ok: false }, { status: 401 });
+    };
+    const app = fixture.recreateApp(false, { identityOrigin: "http://127.0.0.1:8787", identityFetch });
+    const sendSetup = (cookie?: string, extraHeaders: Record<string, string> = {}) => app.request("/api/admin/v1/setup", {
+      method: "POST",
+      headers: { ...jsonHeaders(), ...(cookie ? { cookie } : {}), ...extraHeaders },
+      body: JSON.stringify({ password: ADMIN_PASSWORD }),
+    });
+
+    assert.equal((await sendSetup()).status, 401);
+    assert.equal((await sendSetup("session=owner")).status, 403);
+    assert.equal((await sendSetup("session=forged", { "x-role": "admin" })).status, 401);
+    assert.equal((await sendSetup("session=superadmin")).status, 503);
+    assert.equal(fixture.identity.isInitialized(), false);
+
+    mismatchApi = false;
+    assert.equal((await sendSetup("session=superadmin")).status, 204);
+    assert.equal(fixture.identity.isInitialized(), true);
+    assert.equal((await sendSetup("session=superadmin")).status, 409);
+  } finally {
+    fixture.close();
+  }
+});
 
 function jsonHeaders(): Record<string, string> {
   return {

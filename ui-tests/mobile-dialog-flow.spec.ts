@@ -124,7 +124,7 @@ test.describe("enlarged admin dialogs keep fields and decisions reachable", () =
       const technical = page.getByRole("dialog", { name: "技术详情", exact: true });
       await expect(technical.getByRole("group", { name: "技术详情", exact: true })).toContainText("synthetic_layout_evidence");
       const technicalScroll = await scrollRegion(technical);
-      const copy = technical.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true });
+      const copy = technical.getByRole("button", { name: "复制内部流水编号（StarPAY）", exact: true });
       const copyTarget = await reveal(copy, page);
       await expectTouchTarget(technical.getByRole("button", { name: "关闭对话框", exact: true }));
       await copy.tap();

@@ -23,6 +23,7 @@ import { migrateSiteData } from "../sites/migrations/data.ts";
 import { countSiteDomainViolations } from "../sites/integrity.ts";
 import { migrateAlipayAccounts } from "../alipay-accounts/migration.ts";
 import { countAlipayAccountDomainViolations } from "../alipay-accounts/integrity.ts";
+import { countWechatSubmissionViolations } from "../epay-compat/wechat-submission-integrity.ts";
 import {
   conflictFingerprint,
   ledgerConflictOperationEvidence,
@@ -1108,7 +1109,7 @@ function countDomainViolations(connection: DatabaseSync): number {
     countLedgerDomainViolations(connection) +
     countReconciliationDomainViolations(connection) +
     countWebhookDomainViolations(connection) +
-    countAdminOperationViolations(connection) + countSiteDomainViolations(connection) + countAlipayAccountDomainViolations(connection);
+    countAdminOperationViolations(connection) + countSiteDomainViolations(connection) + countAlipayAccountDomainViolations(connection) + countWechatSubmissionViolations(connection);
 }
 
 function countRuntimeSettingsDomainViolations(connection: DatabaseSync): number {

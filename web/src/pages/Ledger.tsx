@@ -71,7 +71,7 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
     { key: "alipay_account_id", label: "收款账号", value: search.get("alipay_account_id") ?? "", options: [{ value: "", label: "全部收款账号" }, ...(accounts.data?.data.map(account => ({ value: account.id, label: account.name })) ?? [])] },
     { key: "association_status", label: "关联状态", value: search.get("association_status") ?? "", options: associationOptions },
     { key: "direction", label: "收支方向", value: direction, defaultValue: DEFAULT_LEDGER_DIRECTION, options: directionOptions },
-    { key: "state", label: "PerPay 处理状态", value: search.get("state") ?? "", options: stateOptions },
+    { key: "state", label: "StarPAY 处理状态", value: search.get("state") ?? "", options: stateOptions },
     { key: "has_reversals", label: "撤销记录", value: search.get("has_reversals") ?? "", options: reversalOptions },
   ];
   const columns: BusinessColumn<AdminLedgerSummary>[] = [
@@ -93,7 +93,7 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
     { id: "other_account", label: "对方", layout: "text", summaryDefault: true, summaryPriority: "details", responsive: { minWidthRem: 58, basis: "container" }, cell: entry => <span className="wrap-anywhere">{ledgerFact(entry.other_account)}</span> },
     { id: "alipay_account", label: "收款账号", layout: "text", summaryDefault: true, responsive: { minWidthRem: 58, basis: "container" }, cell: entry => <AlipayAccountIdentity id={entry.alipay_account_id} name={entry.alipay_account_name} /> },
     { id: "memo", label: "备注", layout: "text", summaryDefault: false, responsive: { minWidthRem: 78, basis: "container" }, cell: entry => <span className="wrap-anywhere">{ledgerFact(entry.memo)}</span> },
-    { id: "state", label: "PerPay 处理状态", layout: "status", align: "center", summaryDefault: true, responsive: { minWidthRem: 78, basis: "container" }, cell: entry => <LedgerStates entry={entry} /> },
+    { id: "state", label: "StarPAY 处理状态", layout: "status", align: "center", summaryDefault: true, responsive: { minWidthRem: 78, basis: "container" }, cell: entry => <LedgerStates entry={entry} /> },
     { id: "associated_at", label: "最近关联时间", sortBy: "associated_at", layout: "datetime", align: "center", summaryDefault: false, responsive: { minWidthRem: 90, basis: "container" }, cell: entry => entry.last_associated_at ? <ListDateTime value={entry.last_associated_at} /> : "—" },
     { id: "handled_at", label: "最近处理时间", sortBy: "handled_at", layout: "datetime", align: "center", summaryDefault: false, responsive: { minWidthRem: 100, basis: "container" }, cell: entry => entry.last_handled_at ? <ListDateTime value={entry.last_handled_at} /> : "—" },
   ];
@@ -125,8 +125,8 @@ export function LedgerList({ onManual }: { onManual?: (trigger: HTMLButtonElemen
           {activeFilters && <Button variant="ghost" size="sm" onClick={() => control.update(clearFilterValues)}>清除筛选</Button>}
         </>}
         lookup={{
-          modes: [{ value: "ledger", label: "内部流水编号（PerPay）", placeholder: "输入完整的 PerPay 内部流水编号", pattern: resourceIdPattern.source }],
-          inputLabel: "内部流水编号（PerPay）", inputName: "ledger-lookup",
+          modes: [{ value: "ledger", label: "内部流水编号（StarPAY）", placeholder: "输入完整的 StarPAY 内部流水编号", pattern: resourceIdPattern.source }],
+          inputLabel: "内部流水编号（StarPAY）", inputName: "ledger-lookup",
           onSubmit: (_mode, value) => { if (resourceIdPattern.test(value)) navigate("/reconciliation/transactions/" + value); },
         }}
         desktopFilters={listFilters.map(filter => <Select key={filter.key} items={filter.options} value={filter.value} onValueChange={value => { if (value !== null) control.update({ [filter.key]: value }); }}>

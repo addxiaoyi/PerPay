@@ -1,4 +1,5 @@
 import type { InstanceRuntimeSettingsSnapshot } from "./model.ts";
+import { displaySystemName } from "../shared/branding.ts";
 import { AlipayAccountStore } from "../alipay-accounts/store.ts";
 import { SiteStore } from "../sites/store.ts";
 import { collectionPolicyInputSchema, type CollectionPolicyInput } from "./collection-policy.ts";
@@ -201,7 +202,7 @@ export class RuntimeSettingsStore {
       const row = connection.prepare("SELECT * FROM runtime_configuration WHERE singleton_key = 1").get() as unknown as ConfigurationRow | undefined;
       if (!row) throw new Error("runtime configuration singleton is missing");
       return {
-        systemName: row.system_name,
+        systemName: displaySystemName(row.system_name),
         checkoutHelpUrl: row.checkout_help_url,
         checkoutShowProductName: Number(row.checkout_show_product_name) === 1,
         dashboardChartType: row.dashboard_chart_type,
@@ -946,7 +947,7 @@ export class RuntimeSettingsStore {
           checkoutTerminalObservationSeconds: safeInteger(row.checkout_terminal_observation_seconds, "checkout terminal observation seconds"),
         },
         backup: { intervalSeconds: safeInteger(row.backup_interval_seconds, "backup interval"), keepCount: safeInteger(row.backup_keep_count, "backup keep count") },
-        display: { systemName: row.system_name, dashboardChartType: row.dashboard_chart_type },
+        display: { systemName: displaySystemName(row.system_name), dashboardChartType: row.dashboard_chart_type },
         activeProviderAccountKey: row.provider_account_key,
       };
   }
@@ -1056,7 +1057,7 @@ export class RuntimeSettingsStore {
         keepCount: safeInteger(row.backup_keep_count, "backup keep count"),
       },
       display: {
-        systemName: row.system_name,
+        systemName: displaySystemName(row.system_name),
         checkoutHelpUrl: row.checkout_help_url,
         checkoutShowProductName: Number(row.checkout_show_product_name) === 1,
         dashboardChartType: row.dashboard_chart_type,

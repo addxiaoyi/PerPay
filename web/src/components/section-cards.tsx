@@ -24,10 +24,10 @@ export function SectionCards({
   const cards = [
     {
       title: "今日确认金额",
-      description: "按 PerPay 的确认时间汇总，不是支付宝账单合计。",
+      description: "按 StarPAY 的确认时间汇总，不是支付宝账单合计。",
       value: today ? money(today.confirmed_amount_cents) : "—",
     },
-    { title: "今日收款确认笔数", description: "按收款确认次数统计，不等于当前收款已确认的订单数；按 PerPay 的确认时间汇总，不是支付宝账单合计。", value: today ? count(today.confirmations) : "—" },
+    { title: "今日收款确认笔数", description: "按收款确认次数统计，不等于当前收款已确认的订单数；按 StarPAY 的确认时间汇总，不是支付宝账单合计。", value: today ? count(today.confirmations) : "—" },
     {
       title: "当前待付款",
       value: analytics ? count(analytics.pending.orders) : "—",

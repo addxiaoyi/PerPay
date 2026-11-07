@@ -120,7 +120,7 @@ describe("mobile business list integration", () => {
 
   it.each([
     ["商户订单号（业务网站）", order.merchant_order_no],
-    ["内部订单编号（PerPay）", orderId],
+    ["内部订单编号（StarPAY）", orderId],
   ])("preserves direct order lookup for %s", async (mode, value) => {
     const calls: Request[] = [];
     vi.stubGlobal(
@@ -187,9 +187,9 @@ describe("mobile business list integration", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "查询方式：关键词" }));
     await user.click(
-      await screen.findByRole("menuitemradio", { name: "内部流水编号（PerPay）" }),
+      await screen.findByRole("menuitemradio", { name: "内部流水编号（StarPAY）" }),
     );
-    const input = screen.getByRole("searchbox", { name: "内部流水编号（PerPay）" });
+    const input = screen.getByRole("searchbox", { name: "内部流水编号（StarPAY）" });
     await user.type(input, "invalid");
     await user.click(screen.getByRole("button", { name: "查找" }));
     expect(

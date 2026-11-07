@@ -75,7 +75,7 @@ describe("application public key generation and replacement", () => {
       await screen.findByRole("heading", { name: "应用公钥", level: 2 }),
     ).toBeVisible();
     expect(
-      screen.getByText("应用私钥：保存在 PerPay，不要上传到支付宝。"),
+      screen.getByText("应用私钥：保存在 StarPAY，不要上传到支付宝。"),
     ).toBeVisible();
     expect(
       screen.getByRole("link", { name: "导入已有应用私钥" }),

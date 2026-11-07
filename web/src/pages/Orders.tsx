@@ -52,7 +52,7 @@ const checkoutOptions = [
 ];
 const searchOptions = [
   { value: "merchant", label: "商户订单号（业务网站）" },
-  { value: "internal", label: "内部订单编号（PerPay）" },
+  { value: "internal", label: "内部订单编号（StarPAY）" },
 ];
 export default function Orders() {
   const { clientId } = useWorkspace();

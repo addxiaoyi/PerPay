@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-/** PerPay scheduling policy, not Alipay application credentials. */
+/** StarPAY scheduling policy, not Alipay application credentials. */
 export const collectionPolicyFields = {
   timeout_milliseconds: z.number().int().min(1_000).max(120_000),
   scan_interval_seconds: z.number().int().min(5).max(3_600),

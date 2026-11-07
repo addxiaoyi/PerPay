@@ -85,7 +85,7 @@ export function readAdminLedgerPageQuery(values: URLSearchParams, environment: P
   const direction = values.get("direction");
   if (direction !== null && direction !== "CREDIT" && direction !== "DEBIT") throw new ListQueryError("请选择收入或支出，或清除收支筛选");
   const state = values.get("state");
-  if (state !== null && !STATES.includes(state as LedgerEntryState)) throw new ListQueryError("PerPay 处理状态筛选无效，请重新选择");
+  if (state !== null && !STATES.includes(state as LedgerEntryState)) throw new ListQueryError("StarPAY 处理状态筛选无效，请重新选择");
   const associationStatus = values.get("association_status");
   if (associationStatus !== null && !["UNMATCHED", "MATCHED", "MULTIPLE"].includes(associationStatus)) throw new ListQueryError("收款关联状态筛选无效，请重新选择");
   const hasReversals = values.get("has_reversals");

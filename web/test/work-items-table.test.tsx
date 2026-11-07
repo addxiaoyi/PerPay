@@ -143,7 +143,7 @@ describe("work item business context", () => {
     if (summary === "omitted") delete item.order_summary;
     mount([item]);
     expect(screen.getByText("订单摘要暂不可用")).toBeVisible();
-    expect(screen.getByRole("link", { name: "查看订单，内部订单编号（PerPay）：" + orderId }))
+    expect(screen.getByRole("link", { name: "查看订单，内部订单编号（StarPAY）：" + orderId }))
       .toHaveAttribute("href", "/orders/" + orderId);
     expect(screen.getByRole("group", { name: "应付金额 —" })).toBeVisible();
     expect(screen.queryByText("¥0.00")).not.toBeInTheDocument();
@@ -152,7 +152,7 @@ describe("work item business context", () => {
 
   it.each([
     { item: conflict, label: "支付宝流水号", reference: conflict.external_event_id!, title: "支付宝流水号重复", path: "/reconciliation/conflicts/" },
-    { item: { ...exception, order_id: null, order_summary: null }, label: "内部流水编号（PerPay）", reference: ledgerId, title: "实收金额不符", path: "/reconciliation/exceptions/" },
+    { item: { ...exception, order_id: null, order_summary: null }, label: "内部流水编号（StarPAY）", reference: ledgerId, title: "实收金额不符", path: "/reconciliation/exceptions/" },
     { item: { ...exception, order_id: null, order_summary: null, ledger_entry_id: null }, label: "提醒编号", reference: exception.resource_id, title: "实收金额不符", path: "/reconciliation/exceptions/" },
   ])("identifies an unassociated reminder by $label without inventing order data", ({ item, label, reference, title, path }) => {
     mobileMedia(320);

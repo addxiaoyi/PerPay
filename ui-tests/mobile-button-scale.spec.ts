@@ -214,13 +214,13 @@ test.describe("compact mobile button visuals and separate touch targets", () => 
     const dialog = page.getByRole("dialog", { name: "技术详情", exact: true });
     const body = dialog.locator("[data-admin-dialog-scroll]");
     await expect.poll(() => body.evaluate(element => element.scrollTop)).toBe(0);
-    const copy = dialog.getByRole("button", { name: "复制内部流水编号（PerPay）", exact: true });
+    const copy = dialog.getByRole("button", { name: "复制内部流水编号（StarPAY）", exact: true });
     await expect(dialog.getByRole("heading", { name: "技术详情", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(copy).toBeFocused();
     await copy.hover();
     await page.clock.runFor(200);
-    const tooltip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: /^复制内部流水编号（PerPay）$/ });
+    const tooltip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: /^复制内部流水编号（StarPAY）$/ });
     await expect(tooltip).toBeVisible();
     const copyGeometry = await expectTouchSlot(copy);
     const tooltipBounds = (await tooltip.boundingBox())!;

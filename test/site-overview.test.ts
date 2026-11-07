@@ -270,7 +270,7 @@ function addSite(connection: DatabaseSync, clientId: string, name: string, optio
     return_origin: null,
     policy: {
       orders: { order_ttl_seconds: 300, amount_offset_maximum_cents: 99, amount_reuse_cooldown_seconds: 60, pending_order_limit: null },
-      display: { checkout_name: "PerPay", checkout_help_url: null, checkout_show_product_name: true },
+      display: { checkout_name: "StarPAY", checkout_help_url: null, checkout_show_product_name: true },
       notification_delivery: { timeout_milliseconds: 5000, maximum_attempts: 12, retry_base_seconds: 5, retry_maximum_seconds: 3600 },
     },
   }), options.deletedAt ?? null);

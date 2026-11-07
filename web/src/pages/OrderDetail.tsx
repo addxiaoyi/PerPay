@@ -25,6 +25,7 @@ import { LedgerFreshness } from "@/components/ledger-freshness";
 import { StatusBadge, paymentBasisDescription } from "@/components/business-status";
 import { ListDateTime, ListMoney } from "@/components/list-primitives";
 import { CopyValue } from "@/components/copy-value";
+import { adminMountPath } from "@/admin-base";
 import { QueryView } from "@/components/request-state";
 import {
   DetailFields,
@@ -122,7 +123,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
     .find((event) => event.event_type === "PAYMENT_CONFIRMED");
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-3" role="group" aria-label="PerPay 收款状态">
+      <div className="flex flex-wrap items-center justify-between gap-3" role="group" aria-label="StarPAY 收款状态">
         <StatusBadge value={order.payment.status} />
         {basis && <p className="text-sm text-muted-foreground">{basis}</p>}
       </div>
@@ -142,8 +143,8 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
                 <h3 className="text-sm font-medium">业务网站传入</h3>
                 <DetailFields compact items={[["下单金额", <ListMoney value={order.requested_amount_cents} secondary />]]} />
               </section>
-              <section aria-label="PerPay 计算的金额" className="flex min-w-0 flex-col gap-3">
-                <h3 className="text-sm font-medium">PerPay 计算</h3>
+              <section aria-label="StarPAY 计算的金额" className="flex min-w-0 flex-col gap-3">
+                <h3 className="text-sm font-medium">StarPAY 计算</h3>
                 <DetailFields compact items={[
                   ["加价金额", <ListMoney value={order.payable_amount_cents - order.requested_amount_cents} secondary />],
                   ["应付金额", <ListMoney value={order.payable_amount_cents} />],
@@ -168,7 +169,7 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
               <a
                 className={buttonVariants({ variant: "outline", size: "sm" })}
                 href={
-                  "/api/admin/v1" + (clientId ? "/sites/" + encodeURIComponent(clientId) : "") + "/orders/" +
+                  adminMountPath() + "/api/admin/v1" + (clientId ? "/sites/" + encodeURIComponent(clientId) : "") + "/orders/" +
                   encodeURIComponent(order.order_id) +
                   "/checkout"
                 }
@@ -196,13 +197,13 @@ function OrderDesk({ order }: { order: AdminOrderDetail }) {
                   ...(order.note ? [["订单备注", order.note] as const] : []),
                 ]} />
               </section>
-              <section aria-label="PerPay 记录的订单信息" className="flex min-w-0 flex-col gap-3">
-                <h3 className="text-sm font-medium">PerPay 记录</h3>
+              <section aria-label="StarPAY 记录的订单信息" className="flex min-w-0 flex-col gap-3">
+                <h3 className="text-sm font-medium">StarPAY 记录</h3>
                 <DetailFields compact className="@sm/detail-fields:grid-cols-1" items={[
                   ...(!clientId ? [["业务网站", <Link to={"/sites/" + encodeURIComponent(order.api_client_id)}>{order.site_name ?? "业务网站名称暂不可用"}</Link>] as const] : []),
                   ["收款账号", <AlipayAccountIdentity id={order.alipay_account_id} name={order.alipay_account_name} />],
                   ["创建时间", dateTime(order.created_at)],
-                  ...(confirmed ? [["PerPay 确认时间", dateTime(confirmed.occurred_at)] as const] : []),
+                  ...(confirmed ? [["StarPAY 确认时间", dateTime(confirmed.occurred_at)] as const] : []),
                   ["收银台有效期至", dateTime(order.checkout.expires_at)],
                 ]} />
               </section>

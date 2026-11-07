@@ -18,6 +18,7 @@ services:
     environment:
       PERPAY_SECRETS_DIR: "/run/perpay-secrets"
       PERPAY_PUBLIC_URL: *perpay-public-url
+      PERPAY_BASE_PATH: "/"
       PERPAY_TRUSTED_PROXY_CIDRS: *perpay-trusted-proxy-cidrs
       PERPAY_SETUP_TOKEN_ENABLED: *perpay-setup-token-enabled
     # 可选：固定版本时，将 app、backup、maintenance 三处镜像统一改为同一版本。
@@ -42,7 +43,7 @@ services:
         - CMD
         - node
         - -e
-        - "fetch('http://127.0.0.1:6190/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        - "const b=process.env.PERPAY_BASE_PATH||'/'; fetch('http://127.0.0.1:6190'+(b==='/'?'':b)+'/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
       interval: 30s
       timeout: 5s
       start_period: 5m

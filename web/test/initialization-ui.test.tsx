@@ -77,7 +77,7 @@ describe("first-deployment authentication presentation", () => {
     (path) => {
       mount("false", path);
       expect(
-        screen.getByRole("heading", { name: "初始化 PerPay", level: 1 }),
+        screen.getByRole("heading", { name: "初始化 StarPAY", level: 1 }),
       ).toBeVisible();
       expect(
         screen.getByText(
@@ -289,7 +289,7 @@ describe("first-deployment authentication presentation", () => {
     await user.click(screen.getByRole("button", { name: "创建管理员" }));
     await screen.findByText("请稍后重试");
     expect(
-      screen.getByRole("heading", { name: "初始化 PerPay" }),
+      screen.getByRole("heading", { name: "初始化 StarPAY" }),
     ).toBeVisible();
     expect(screen.getByLabelText("设置管理员密码")).toHaveValue(
       "new-admin-password",

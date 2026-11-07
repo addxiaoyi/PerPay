@@ -1,4 +1,12 @@
 import { assertSiteOrder, assertSiteResource, assertSiteLedger, SITE_ADMIN_ROUTES } from "../sites/admin-scope.ts";
+import { createMerchantWorkspace } from "../epay-compat/merchant-workspace.ts";
+import { createMainMerchantConsole } from "../epay-compat/main-merchant-console.ts";
+import { authorizeMainAdmin, MerchantAccessError } from "../epay-compat/merchant-access.ts";
+import { mountEPayGateway } from "../epay-compat/gateway-runtime.ts";
+import { createShadowBalanceWorkspace } from "../epay-compat/shadow-balance-workspace.ts";
+import { createMainOrdersWorkspace } from "../epay-compat/main-orders-workspace.ts";
+import { registerWechatCredential, revokeWechatCredential } from "../epay-compat/wechat-credentials.ts";
+import { changeMerchantFee, listMerchantFees, MerchantFeeConflict, readMerchantFee, readMerchantFeeHistory } from "../epay-compat/merchant-fee-admin.ts";
 import { AlipayAccountError, alipayAccountIdSchema, createAlipayAccountInputSchema, updateAlipayAccountInputSchema, type AlipayAccountView } from "../alipay-accounts/model.ts";
 import type { AlipayAccountService } from "../alipay-accounts/service.ts";
 import { siteOverview } from "./site-overview.ts";
@@ -156,6 +164,14 @@ const SECURE_CSRF_COOKIE = "__Host-perpay_csrf";
 const SESSION_COOKIE_MAX_AGE_SECONDS = 12 * 60 * 60;
 const MAX_JSON_BODY_BYTES = 16 * 1024;
 const MAX_PASSWORD_BYTES = 1024;
+const wechatCredentialInput = z.object({
+  appId: z.string().min(1).max(128), merchantId: z.string().min(1).max(128),
+  platformKey: z.string().min(1).max(8192), platformKeyId: z.string().min(1).max(128),
+  apiV3Key: z.string().refine((key) => Buffer.byteLength(key, "utf8") === 32),
+  validFrom: z.number().int().nonnegative().safe(), validUntil: z.number().int().nonnegative().safe(),
+}).strict().refine((input) => input.validUntil > input.validFrom);
+const wechatRevokeInput = z.object({ reason: z.string().trim().min(1).max(512) }).strict();
+const merchantFeeInput = z.object({ expectedFeeBps: z.number().int().min(0).max(5000), expectedVersion: z.number().int().nonnegative().safe(), feeBps: z.number().int().min(0).max(5000), reason: z.string().trim().min(1).max(512).regex(/^[^\x00-\x1f\x7f]+$/) }).strict();
 const ORDER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const TEST_PAYMENT_MAX_AMOUNT_CENTS = 10_000;
 const WEBHOOK_DELIVERY_STATUSES = new Set<WebhookDeliveryStatus>([
@@ -179,6 +195,7 @@ type AppEnvironment = {
   Bindings: Partial<HttpBindings>;
   Variables: {
     adminSiteId: string | undefined;
+    basePath: string;
     requestId: string;
     adminSession: AuthenticatedSession;
     apiRawBody: Buffer;
@@ -234,6 +251,8 @@ const ledgerConflictResolutionSchema = z.object({
 }).strict();
 
 export interface AppDependencies {
+  readonly epayGateway?: { readonly app: Hono };
+  readonly merchantWorkspace?: { readonly identityOrigin: string; readonly identityFetch?: typeof fetch; readonly includeMainOrders?: boolean; readonly includeShadowBalance?: boolean } | undefined;
   readonly alipayAccounts?: AlipayAccountService | undefined;
   readonly accountHealth?: ((accountId: string) => { state: string; lastSuccessAt: number | null; lastErrorCode: string | null; collectionReady: boolean }) | undefined;
   readonly sites?: SiteStore | undefined;
@@ -340,7 +359,10 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   if (sites && !dependencies.sites) dependencies = { ...dependencies, sites };
   const alipayAccounts = dependencies.alipayAccounts ?? dependencies.settings?.accountService();
   if (alipayAccounts && !dependencies.alipayAccounts) dependencies = { ...dependencies, alipayAccounts };
-  const app = new Hono<AppEnvironment>();
+  const basePath = dependencies.config.basePath ?? "/";
+  const app = basePath === "/"
+    ? new Hono<AppEnvironment>()
+    : new Hono<AppEnvironment>().basePath(basePath);
   const setupToken = dependencies.config.setupTokenEnabled && !dependencies.identity.isInitialized()
     ? new SetupToken(dependencies.onSetupToken)
     : null;
@@ -348,8 +370,15 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   const manualCheckoutBudget = new PublicCheckoutRateLimiter({sourceBurst:5,sourceRequestsPerSecond:1,globalBurst:30,globalRequestsPerSecond:10});
   const collectionCodeCache = new CollectionCodeSvgCache();
   const probeOperations = new HealthProbeCache<OperationalSummaries>();
-  const adminFrontend = loadAdminFrontend();
+  const adminFrontend = loadAdminFrontend(undefined, basePath);
   const updateChecker = dependencies.updateChecker ?? new OfficialUpdateChecker();
+
+  if (basePath !== "/") {
+    app.use("*", async (context, next) => {
+      if (context.req.path === `${basePath}/`) return context.redirect(`${basePath}/admin/`, 308);
+      await next();
+    });
+  }
 
   app.use("*", async (context, next) => {
     const supplied = context.req.header("x-request-id");
@@ -357,6 +386,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     context.set("requestId", requestId);
     const cspNonce = randomBytes(18).toString("base64");
     context.set("cspNonce", cspNonce);
+    context.set("basePath", basePath);
     context.header("x-request-id", requestId);
     context.header("x-content-type-options", "nosniff");
     context.header("referrer-policy", "no-referrer");
@@ -377,8 +407,21 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     await next();
   });
 
+  if (dependencies.merchantWorkspace) {
+    app.route("/api/merchant/epay", createMainMerchantConsole({ database: dependencies.database, masterKey: dependencies.config.masterKey, publicOrigin: dependencies.config.publicOrigin, allowAdministration: dependencies.config.epayGateway?.mode === "live" && !dependencies.demoMode, ...dependencies.merchantWorkspace }));
+    app.route("/api/merchant/epay", createMerchantWorkspace({ database: dependencies.database, ...dependencies.merchantWorkspace }));
+    if (dependencies.merchantWorkspace.includeMainOrders) {
+      app.route("/api/merchant/epay", createMainOrdersWorkspace({ database: dependencies.database, masterKey: dependencies.config.masterKey, ...dependencies.merchantWorkspace }));
+    }
+    if (dependencies.merchantWorkspace.includeShadowBalance) {
+      app.route("/api/merchant/epay", createShadowBalanceWorkspace({ database: dependencies.database, masterKey: dependencies.config.masterKey, ...dependencies.merchantWorkspace }));
+    }
+  }
+
+  if (dependencies.epayGateway) mountEPayGateway(app, dependencies.epayGateway, basePath);
+
   app.use("*", async (context, next) => {
-    const path = context.req.path;
+    const path = stripBasePath(context.req.path, basePath);
     const isAdmin = path === "/admin" || path.startsWith("/admin/") ||
       path === "/api/admin" || path.startsWith("/api/admin/");
     if (isAdmin) {
@@ -465,13 +508,13 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     });
   }
 
-  app.get("/", (context) => context.redirect("/admin/", 302));
+  app.get("/", (context) => context.redirect(withBasePath(basePath, "/admin/"), 302));
   const serveAdmin: MiddlewareHandler<AppEnvironment> = async (context) => {
     if (!adminFrontend) {
       return context.text("管理前端尚未构建。请运行 npm run build，或使用 npm run dev:admin 开发入口。", 503);
     }
-    const path = context.req.path;
-    const asset = adminFrontend.assets.get(path);
+    const path = stripBasePath(context.req.path, basePath);
+    const asset = adminFrontend.assets.get(withBasePath(basePath, path));
     if (asset) {
       context.header("etag", asset.etag);
       context.header("cache-control", path.startsWith("/admin/assets/")
@@ -484,10 +527,17 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     if (path.startsWith("/admin/assets/") || /\.[^/]+$/.test(path)) {
       throw new HttpApiError(404, "asset_not_found", "静态资源不存在");
     }
-    return context.html(adminFrontend.render(dependencies.identity.isInitialized(), publicSystemName(dependencies), dependencies.config.setupTokenEnabled).replace("<html", dependencies.demoMode ? '<html data-perpay-demo="readonly"' : "<html"));
+    const portal = dependencies.merchantWorkspace ? (path.startsWith("/merchant") ? "merchant" : "admin") : null;
+    const portalMeta = portal ? `<meta name="perpay-portal" content="${portal}" /><meta name="perpay-router-base" content="${withBasePath(basePath, `/${portal}/`)}" />` : "";
+    return context.html(adminFrontend.render(dependencies.identity.isInitialized(), publicSystemName(dependencies), dependencies.config.setupTokenEnabled)
+      .replace("</head>", `${portalMeta}</head>`).replace("<html", dependencies.demoMode ? '<html data-perpay-demo="readonly"' : "<html"));
   };
-  app.get("/admin", (context) => context.redirect("/admin/" + new URL(context.req.url).search, 308));
+  app.get("/admin", (context) => context.redirect(withBasePath(basePath, "/admin/") + new URL(context.req.url).search, 308));
   app.get("/admin/*", serveAdmin);
+  if (dependencies.merchantWorkspace) {
+    app.get("/merchant", context => context.redirect(withBasePath(basePath, "/merchant/") + new URL(context.req.url).search, 308));
+    app.get("/merchant/*", serveAdmin);
+  }
 
   app.get("/checkout/:token", (context) => {
     const sourceAddress = remoteAddress(context, dependencies.config.trustedProxy);
@@ -551,6 +601,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
         ? null
         : `/api/public/v1/checkouts/${encodeURIComponent(token)}/qr.svg`,
       initialError,
+      basePath,
     }), status);
   });
 
@@ -582,7 +633,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       );
     }
     context.header("content-type", "image/svg+xml; charset=utf-8");
-    context.header("content-disposition", "inline; filename=perpay-collection-code.svg");
+    context.header("content-disposition", "inline; filename=StarPAY-collection-code.svg");
     return context.body(svg);
   });
 
@@ -593,6 +644,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       setupToken?.consume();
       throw new HttpApiError(409, "identity_already_initialized", "管理员身份已经初始化");
     }
+    await requireMainAdministrator(dependencies, context.req.header("cookie") ?? "");
     const body = await readJson(context, dependencies.config.setupTokenEnabled ? tokenProtectedSetupSchema : setupSchema, MAX_JSON_BODY_BYTES);
     if (dependencies.config.setupTokenEnabled && !setupToken?.matches(body.setup_token ?? "")) {
       throw new HttpApiError(403, "setup_token_invalid", "初始化令牌无效或已失效，请从服务器最新启动日志重新获取。");
@@ -631,7 +683,98 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     });
   });
 
-  const adminSession = requireAdminSession(dependencies.identity, dependencies.config.secureCookies);
+  const adminSession = requireAdminSession(dependencies.identity, dependencies.config.secureCookies, dependencies);
+
+  // Credential administration remains restricted to the explicitly enabled shadow instance.
+  if (dependencies.merchantWorkspace) {
+    app.get("/api/admin/v1/epay/merchants", adminSession, (context) => {
+      context.header("Cache-Control", "no-store");
+      const query = new URL(context.req.url).searchParams;
+      const values = query.getAll("after");
+      if (values.length > 1 || [...query.keys()].some(key => key !== "after") || (values.length && (!/^[1-9]\d{0,14}$/.test(values[0]!) || !Number.isSafeInteger(Number(values[0]))))) return context.json({ error: "invalid_query" }, 400);
+      return context.json({ data: listMerchantFees(dependencies.database, values.length ? Number(values[0]) : 0, 100) });
+    });
+    app.get("/api/admin/v1/epay/merchants/:id/fee/history", adminSession, (context) => {
+      context.header("Cache-Control", "no-store");
+      const id = context.req.param("id"), query = new URL(context.req.url).searchParams, values = query.getAll("before");
+      if (!/^[1-9]\d{0,14}$/.test(id) || !Number.isSafeInteger(Number(id))) return context.json({ error: "invalid_merchant" }, 400);
+      if (values.length > 1 || [...query.keys()].some(key => key !== "before") || (values.length && (!/^[1-9]\d{0,14}$/.test(values[0]!) || !Number.isSafeInteger(Number(values[0]))))) return context.json({ error: "invalid_query" }, 400);
+      return context.json({ data: readMerchantFeeHistory(dependencies.database, Number(id), values.length ? Number(values[0]) : null, 100) });
+    });
+    app.get("/api/admin/v1/epay/merchants/:id/fee", adminSession, (context) => {
+      context.header("Cache-Control", "no-store");
+      const id = context.req.param("id");
+      if (!/^[1-9]\d{0,14}$/.test(id) || !Number.isSafeInteger(Number(id))) return context.json({ error: "invalid_merchant" }, 400);
+      const fee = readMerchantFee(dependencies.database, Number(id));
+      return fee ? context.json({ data: fee }) : context.json({ error: "merchant_not_found" }, 404);
+    });
+    app.post("/api/admin/v1/epay/merchants/:id/fee", adminSession, async (context) => {
+      context.header("Cache-Control", "no-store");
+      requireJsonContentType(context);
+      requireSameOrigin(context, dependencies.config.publicOrigin);
+      requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
+      const id = context.req.param("id");
+      if (!/^[1-9]\d{0,14}$/.test(id) || !Number.isSafeInteger(Number(id))) return context.json({ error: "invalid_merchant" }, 400);
+      const input = await readJson(context, merchantFeeInput, MAX_JSON_BODY_BYTES);
+      if (dependencies.demoMode) return context.json({ error: "demo_read_only" }, 403);
+      requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
+      const now = dependencies.clock?.() ?? Date.now();
+      if (input.feeBps === input.expectedFeeBps || now <= input.expectedVersion) return context.json({ error: "invalid_fee_change" }, 400);
+      try {
+        const data = changeMerchantFee(dependencies.database, { ...input, merchantId: Number(id), actor: context.get("adminSession").session.username }, now);
+        return context.json({ data });
+      } catch (error) {
+        if (error instanceof MerchantFeeConflict) return context.json({ error: "fee_conflict" }, 409);
+        throw error;
+      }
+    });
+    app.get("/api/admin/v1/epay/wechat-credentials", adminSession, (context) => {
+      context.header("Cache-Control", "no-store");
+      const query = new URL(context.req.url).searchParams;
+      const pages = query.getAll("page");
+      if (pages.length > 1 || [...query.keys()].some((key) => key !== "page") || !/^[1-9]\d{0,4}$/.test(pages[0] ?? "1")) return context.json({ error: "invalid_query" }, 400);
+      const page = Number(pages[0] ?? "1"), pageSize = 100;
+      const rows = dependencies.database.read((db) => db.prepare(`SELECT c.credential_id,c.app_id,c.provider_merchant_id,c.platform_key_id,c.valid_from,c.valid_until,c.created_at,c.created_by,r.revoked_at,r.revoked_by,r.reason
+        FROM epay_wechat_credentials c LEFT JOIN epay_wechat_credential_revocations r ON r.credential_id=c.credential_id
+        ORDER BY c.created_at DESC,c.credential_id DESC LIMIT ? OFFSET ?`).all(pageSize + 1, (page - 1) * pageSize));
+      return context.json({ data: rows.slice(0, pageSize).map((row) => ({ id: row.credential_id, appId: row.app_id, merchantId: row.provider_merchant_id, platformKeyId: row.platform_key_id, validFrom: Number(row.valid_from), validUntil: Number(row.valid_until), createdAt: Number(row.created_at), createdBy: row.created_by, revokedAt: row.revoked_at === null ? null : Number(row.revoked_at), revokedBy: row.revoked_by, reason: row.reason })), page, hasNext: rows.length > pageSize });
+    });
+    app.post("/api/admin/v1/epay/wechat-credentials", adminSession, async (context) => {
+      context.header("Cache-Control", "no-store");
+      requireJsonContentType(context);
+      requireSameOrigin(context, dependencies.config.publicOrigin);
+      requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
+      const input = await readJson(context, wechatCredentialInput, MAX_JSON_BODY_BYTES);
+      if (dependencies.demoMode) return context.json({ error: "demo_read_only" }, 403);
+      requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
+      const now = dependencies.clock?.() ?? Date.now();
+      if (input.validUntil <= now) return context.json({ error: "invalid_credential" }, 400);
+      const id = randomUUID();
+      try {
+        registerWechatCredential(dependencies.database, dependencies.config.masterKey, { ...input, id, actor: context.get("adminSession").session.username }, now);
+      } catch {
+        return context.json({ error: "credential_registration_failed" }, 400);
+      }
+      return context.json({ data: { id } }, 201);
+    });
+    app.post("/api/admin/v1/epay/wechat-credentials/:id/revoke", adminSession, async (context) => {
+      context.header("Cache-Control", "no-store");
+      requireJsonContentType(context);
+      requireSameOrigin(context, dependencies.config.publicOrigin);
+      requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
+      const input = await readJson(context, wechatRevokeInput, MAX_JSON_BODY_BYTES);
+      if (dependencies.demoMode) return context.json({ error: "demo_read_only" }, 403);
+      requireCsrf(context, dependencies.identity, dependencies.config.secureCookies);
+      const id = context.req.param("id");
+      if (!ORDER_ID_PATTERN.test(id)) return context.json({ error: "invalid_credential" }, 400);
+      try {
+        revokeWechatCredential(dependencies.database, id, context.get("adminSession").session.username, input.reason, dependencies.clock?.() ?? Date.now());
+      } catch {
+        return context.json({ error: "credential_revocation_failed" }, 400);
+      }
+      return context.body(null, 204);
+    });
+  }
 
   app.get("/api/admin/v1/session", adminSession, (context) => {
     const session = context.get("adminSession");
@@ -820,7 +963,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
     const input = await readJson(context, orderExportSchema, MAX_JSON_BODY_BYTES);
     requireCurrentSession(context, dependencies.identity);
     const csv = exportOrders(dependencies.database, input, dependencies.clock?.() ?? Date.now());
-    return context.body(csv, 200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": 'attachment; filename="perpay-orders.csv"', "Cache-Control": "no-store" });
+    return context.body(csv, 200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": 'attachment; filename="StarPAY-orders.csv"', "Cache-Control": "no-store" });
   });
 
   app.get("/api/admin/v1/orders", adminSession, (context) => {
@@ -884,7 +1027,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   // Resolve the existing capability only on explicit admin navigation, never in list/detail JSON.
   app.get("/api/admin/v1/orders/:orderId/checkout", adminSession, (context) => {
     const token = dependencies.orders.adminCheckoutToken(requireOrderId(context.req.param("orderId")));
-    return context.redirect(`/checkout/${encodeURIComponent(token)}`, 302);
+      return context.redirect(withBasePath(basePath, `/checkout/${encodeURIComponent(token)}`), 302);
   });
 
   app.get("/api/admin/v1/orders/:orderId", adminSession, (context) => {
@@ -1841,7 +1984,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
       await next();
     };
     for (const [method, suffix] of SITE_ADMIN_ROUTES) {
-      const controllers = registered.filter(route => route.method === method && route.path === "/api/admin/v1" + suffix).map(route => route.handler).filter(handler => handler !== adminSession);
+      const controllers = registered.filter(route => route.method === method && route.path === withBasePath(basePath, "/api/admin/v1" + suffix)).map(route => route.handler).filter(handler => handler !== adminSession);
       if (!controllers.length) throw new Error("missing website controller: " + suffix);
       app.on(method, "/api/admin/v1/sites/:clientId" + suffix, adminSession, scope, ...controllers);
     }
@@ -1939,14 +2082,50 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
   return app;
 }
 
-function requireAdminSession(identity: IdentityService, secureCookies: boolean): MiddlewareHandler<AppEnvironment> {
+function withBasePath(basePath: string, path: string): string {
+  return basePath === "/" ? path : `${basePath}${path}`;
+}
+
+function stripBasePath(path: string, basePath: string): string {
+  if (basePath === "/") return path;
+  if (path === basePath) return "/";
+  return path.startsWith(`${basePath}/`) ? path.slice(basePath.length) : path;
+}
+
+function requireAdminSession(identity: IdentityService, secureCookies: boolean, dependencies: AppDependencies): MiddlewareHandler<AppEnvironment> {
   return async (context, next) => {
-    const token = getCookie(context, sessionCookieName(secureCookies));
+    const token = getCookie(context, sessionCookieName(secureCookies, context.get("basePath")));
     const authenticated = token ? identity.authenticate(token) : undefined;
     if (!authenticated) throw new HttpApiError(401, "session_invalid", "会话不存在或已过期");
+    await requireMainAdministrator(dependencies, context.req.header("cookie") ?? "");
     context.set("adminSession", authenticated);
     await next();
   };
+}
+
+async function requireMainAdministrator(dependencies: AppDependencies, cookie: string): Promise<void> {
+  const workspace = dependencies.merchantWorkspace;
+  if (!workspace || dependencies.demoMode) return;
+
+  const binding = dependencies.database.read((db) => db.prepare(`SELECT b.main_merchant_id
+    FROM epay_merchant_bindings b JOIN epay_merchant_accounts m ON m.merchant_id=b.epay_merchant_id
+    WHERE m.enabled=1 ORDER BY b.epay_merchant_id LIMIT 1`).get()) as { main_merchant_id: string } | undefined;
+  if (!binding) throw new HttpApiError(503, "system_not_ready", "尚未配置可验证的主站商户绑定");
+
+  try {
+    await authorizeMainAdmin({
+      origin: workspace.identityOrigin,
+      cookie,
+      merchantId: binding.main_merchant_id,
+      database: dependencies.database,
+      ...(workspace.identityFetch ? { fetch: workspace.identityFetch } : {}),
+    });
+  } catch (error) {
+    if (!(error instanceof MerchantAccessError)) throw error;
+    if (error.code === "unauthenticated") throw new HttpApiError(401, "admin_identity_required", "请先登录 StarMC 管理员账户");
+    if (error.code === "forbidden") throw new HttpApiError(403, "admin_identity_required", "需要 StarMC 管理员权限");
+    throw new HttpApiError(503, "system_not_ready", "无法验证 StarMC 管理员身份或商户绑定");
+  }
 }
 
 function requireFinancialWrite(
@@ -1969,9 +2148,9 @@ function publicCheckoutHelp(dependencies: AppDependencies): string | null {
 
 function publicSystemName(dependencies: AppDependencies): string {
   try {
-    return dependencies.settings?.display().systemName ?? "PerPay";
+    return dependencies.settings?.display().systemName ?? "StarPAY";
   } catch {
-    return "PerPay";
+    return "StarPAY";
   }
 }
 
@@ -2208,7 +2387,7 @@ function requireCsrf(
   secureCookies: boolean,
 ): void {
   const csrf = context.req.header("x-csrf-token");
-  const csrfCookie = getCookie(context, csrfCookieName(secureCookies));
+  const csrfCookie = getCookie(context, csrfCookieName(secureCookies, context.get("basePath")));
   if (
     csrf === undefined ||
     csrfCookie === undefined ||
@@ -2329,16 +2508,17 @@ function setAuthenticationCookies(
   secure: boolean,
   maxAgeSeconds = SESSION_COOKIE_MAX_AGE_SECONDS,
 ): void {
-  setCookie(context, sessionCookieName(secure), sessionToken, {
-    path: "/",
+  const basePath = context.get("basePath");
+  setCookie(context, sessionCookieName(secure, basePath), sessionToken, {
+    path: basePath,
     httpOnly: true,
     secure,
     sameSite: "Strict",
     maxAge: maxAgeSeconds,
     priority: "High",
   });
-  setCookie(context, csrfCookieName(secure), csrfToken, {
-    path: "/",
+  setCookie(context, csrfCookieName(secure, basePath), csrfToken, {
+    path: basePath,
     httpOnly: false,
     secure,
     sameSite: "Strict",
@@ -2348,24 +2528,25 @@ function setAuthenticationCookies(
 }
 
 function clearAuthenticationCookies(context: Context<AppEnvironment>, secure: boolean): void {
-  deleteCookie(context, sessionCookieName(secure), {
-    path: "/",
+  const basePath = context.get("basePath");
+  deleteCookie(context, sessionCookieName(secure, basePath), {
+    path: basePath,
     secure,
     sameSite: "Strict",
   });
-  deleteCookie(context, csrfCookieName(secure), {
-    path: "/",
+  deleteCookie(context, csrfCookieName(secure, basePath), {
+    path: basePath,
     secure,
     sameSite: "Strict",
   });
 }
 
-function sessionCookieName(secure: boolean): string {
-  return secure ? SECURE_SESSION_COOKIE : SESSION_COOKIE;
+function sessionCookieName(secure: boolean, basePath = "/"): string {
+  return secure && basePath === "/" ? SECURE_SESSION_COOKIE : SESSION_COOKIE;
 }
 
-function csrfCookieName(secure: boolean): string {
-  return secure ? SECURE_CSRF_COOKIE : CSRF_COOKIE;
+function csrfCookieName(secure: boolean, basePath = "/"): string {
+  return secure && basePath === "/" ? SECURE_CSRF_COOKIE : CSRF_COOKIE;
 }
 
 function readApiAuthentication(context: Context<AppEnvironment>): ApiRequestAuthentication {
