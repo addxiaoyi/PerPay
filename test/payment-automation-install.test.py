@@ -24,10 +24,30 @@ class InstallationTests(unittest.TestCase):
 
     def test_keeps_financial_monitor_network_isolated(self):
         units = self.units()
-        audit = units['perpay-integrity.service.d/30-automation.conf']
+        audit = units['perpay-integrity.service.d/zz-payment-automation.conf']
         self.assertNotIn('PrivateNetwork=false', audit)
         self.assertIn('--delivery-state /var/lib/perpay-alerts/delivery.json', audit)
         self.assertIn('--invoice-readiness /var/lib/perpay-alerts/invoice-readiness.json', audit)
+
+    def test_override_sorts_after_existing_legacy_payment_alerts(self):
+        name = next(name for name in self.units() if name.startswith('perpay-integrity.service.d/'))
+        self.assertGreater(Path(name).name, 'payment-alerts.conf')
+
+    def test_effective_monitor_command_rejects_a_later_override(self):
+        legacy = '{ path=/usr/bin/python3 ; argv[]=/usr/bin/python3 /usr/local/libexec/perpay-payment-alerts.py --state /run/perpay-payment-alerts/state.json ; ignore_errors=no ; }'
+        with patch.object(installer.subprocess, 'run', return_value=Mock(stdout=legacy)):
+            with self.assertRaisesRegex(RuntimeError, 'monitor_command_overridden'):
+                installer.verify_monitor_command()
+
+    def test_effective_monitor_command_requires_exact_queue_and_invoice_paths(self):
+        command = ' '.join(installer.monitor_command())
+        current = '{ path=/usr/bin/python3 ; argv[]=' + command + ' ; ignore_errors=no ; }'
+        with patch.object(installer.subprocess, 'run', return_value=Mock(stdout=current)):
+            installer.verify_monitor_command()
+        for invalid in ['', current + current, current.replace('/var/lib/perpay-alerts/delivery.json', '/run/delivery.json')]:
+            with self.subTest(command=invalid), patch.object(installer.subprocess, 'run', return_value=Mock(stdout=invalid)):
+                with self.assertRaisesRegex(RuntimeError, 'monitor_command_overridden'):
+                    installer.verify_monitor_command()
 
     def test_sender_ends_before_delivery_lease_can_be_reclaimed(self):
         service = self.units()['perpay-payment-delivery.service']

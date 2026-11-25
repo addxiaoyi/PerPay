@@ -6,9 +6,26 @@ import os
 from pathlib import Path, PurePosixPath
 import pwd
 import re
+import shlex
 import stat
 import subprocess
 import tempfile
+
+
+def monitor_command():
+    state = '/var/lib/perpay-alerts'
+    return ['/usr/bin/python3', '/usr/local/libexec/perpay-payment-alerts.py', '--state', state + '/state.json',
+            '--unit', '/etc/systemd/system/perpay-integrity.service', '--delivery-state', state + '/delivery.json',
+            '--invoice-readiness', state + '/invoice-readiness.json']
+
+
+def verify_monitor_command():
+    reply = subprocess.run(['systemctl', 'show', 'perpay-integrity.service', '--property=ExecStart', '--value'],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True,
+                           check=True, timeout=10)
+    commands = re.findall(r'argv\[\]=(.*?)\s*;', reply.stdout)
+    if len(commands) != 1 or shlex.split(commands[0]) != monitor_command():
+        raise RuntimeError('monitor_command_overridden')
 
 
 def unit_path(value):
@@ -58,7 +75,7 @@ TimeoutStartSec=40
 '''
     audit = f'''[Service]
 ExecStart=
-ExecStart=/usr/bin/python3 /usr/local/libexec/perpay-payment-alerts.py --state {state}/state.json --unit /etc/systemd/system/perpay-integrity.service --delivery-state {state}/delivery.json --invoice-readiness {state}/invoice-readiness.json
+ExecStart={' '.join(monitor_command())}
 ReadWritePaths={state}
 '''
 
@@ -81,7 +98,7 @@ WantedBy=timers.target
         'perpay-payment-delivery.timer': timer('Retry pending StarPAY notifications', 'perpay-payment-delivery', '30s', '45s'),
         'perpay-invoice-readiness.service': invoice,
         'perpay-invoice-readiness.timer': timer('Check invoice provider authorization', 'perpay-invoice-readiness', '30min', '90s'),
-        'perpay-integrity.service.d/30-automation.conf': audit,
+        'perpay-integrity.service.d/zz-payment-automation.conf': audit,
     }
 
 
@@ -228,6 +245,7 @@ def main():
             atomic_file(destination, contents.encode('utf-8'))
         subprocess.run(['systemd-analyze', 'verify', *[str(target/(service+'.service')) for service in services]], check=True, timeout=30)
         subprocess.run(['systemctl', 'daemon-reload'], check=True, timeout=30)
+        verify_monitor_command()
         subprocess.run(['systemctl', 'start', 'perpay-invoice-readiness.service'], check=True, timeout=50)
         subprocess.run(['systemctl', 'start', 'perpay-integrity.service'], check=True, timeout=30)
         subprocess.run(['systemctl', 'enable', '--now', *[service+'.timer' for service in services]], check=True, timeout=30)
