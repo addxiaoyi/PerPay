@@ -401,6 +401,7 @@ function groupedQuery(
   ), ` : "";
   // A numerical sort must use the same agreed fact exposed in the response.
   // Invalid or disagreeing duplicate versions belong in the explicit null bucket.
+  // The event-group join scopes metrics; repeating members here exceeds SQLite's expansion depth.
   const amountMetrics = sortBy === "amount_cents" ? `amount_metrics AS MATERIALIZED (
     SELECT external_event_id,
            CASE WHEN COUNT(amount_cents) = COUNT(*) AND MIN(amount_cents) = MAX(amount_cents)
@@ -410,7 +411,6 @@ function groupedQuery(
         UNION ALL
         SELECT duplicate.external_event_id, json_extract(duplicate.facts, '$.amount_cents') AS amount_cents
           FROM duplicate_inputs AS duplicate
-         WHERE EXISTS (SELECT 1 FROM members WHERE members.external_event_id = duplicate.external_event_id)
       ) GROUP BY external_event_id
   ), ` : "";
   const sortExpression = {

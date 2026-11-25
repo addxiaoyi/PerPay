@@ -24,6 +24,7 @@ import { createSiteFixture } from "./site-fixture.ts";
 import type { AppDatabase } from "../src/database/database.ts";
 import { AlipayAccountService, AlipayAccountStore } from "../src/alipay-accounts/index.ts";
 import { migrateAlipayAccounts } from "../src/alipay-accounts/migration.ts";
+import { seedHistoricalSandboxAccount } from "./historical-sandbox-fixture.ts";
 
 const BASE = Date.parse("2026-10-19T16:00:00.000Z");
 const ENVIRONMENT = "PRODUCTION" as const;
@@ -895,6 +896,55 @@ describe("administrator grouped ledger queries", () => {
       const unlinked = readAdminLedgerDetail(f.owner, ENVIRONMENT, readAdminLedgerPage(f.owner, { environment: ENVIRONMENT, q: "a-unlinked" }).items[0]!.ledger_entry_id)!;
       assert.equal(unlinked.last_associated_at, null);
       assert.equal(unlinked.last_handled_at, null);
+      assert.deepEqual(financialSnapshot(f.connection), before);
+    } finally { f.close(); }
+  });
+
+  it("sorts multi-account matched groups by amount", async () => {
+    const f = fixture();
+    try {
+      f.activate();
+      for (const [id, amount] of [["amount-low", 1234], ["amount-high", 2234], ["amount-disputed", 3234]] as const) {
+        const entry = f.entry({ id, amount });
+        f.settle(f.order(id).orderId, entry.ledgerEntryId);
+      }
+      f.record({ id: "amount-disputed", amount: 4234 });
+      f.entry({ id: "amount-unmatched", amount: 9999 });
+      migrateAccountQueries(f);
+      const store = new AlipayAccountStore(f.owner as AppDatabase, f.masterKey);
+      const accounts = new AlipayAccountService({ store });
+      const other = await accounts.create({ name: "Other production account", app_id: "other-amount-app" }, { actorId: "admin" });
+      recorder(f.ledger, () => other.provider_account_key!, f.tick)({ id: "amount-low", amount: 8234 });
+      const sandbox = await accounts.create({ name: "Historical sandbox account", app_id: "sandbox-amount-app" }, { actorId: "admin" });
+      seedHistoricalSandboxAccount(f.owner as AppDatabase, sandbox.id);
+      const sandboxRecord = recorder(f.ledger, () => store.view(sandbox.id).provider_account_key!, f.tick);
+      sandboxRecord({ id: "amount-low", amount: 7234 });
+      sandboxRecord({ id: "amount-low", amount: 6234 });
+      const before = financialSnapshot(f.connection);
+      f.connection.exec("PRAGMA query_only = ON");
+      for (const scope of [{ environment: null }, { environment: ENVIRONMENT, alipayAccountId: "default" }] as const) {
+        for (const sortOrder of ["asc", "desc"] as const) {
+          const actual: string[] = [];
+          let cursor: AdminLedgerQuery["cursor"] = null;
+          do {
+            const page = readAdminLedgerPage(f.owner, { ...scope, associationStatus: "MATCHED", hasReversals: false,
+              sortBy: "amount_cents", sortOrder, limit: 1, cursor });
+            actual.push(...page.items.map(item => item.external_event_id));
+            if (page.items[0]!.external_event_id === "amount-disputed") assert.equal(page.items[0]!.amount_cents, null);
+            cursor = page.next_cursor;
+            assert.ok(actual.length <= 3);
+          } while (cursor);
+          assert.deepEqual(actual, sortOrder === "asc"
+            ? ["amount-low", "amount-high", "amount-disputed"]
+            : ["amount-high", "amount-low", "amount-disputed"]);
+        }
+      }
+      const collisions = readAdminLedgerPage(f.owner, { environment: null, sortBy: "amount_cents" }).items
+        .filter(item => item.external_event_id === "amount-low");
+      assert.equal(collisions.length, 3);
+      assert.equal(collisions.find(item => item.alipay_account_id === "default")!.amount_cents, 1234);
+      assert.equal(collisions.find(item => item.alipay_account_id === other.id)!.amount_cents, 8234);
+      assert.equal(collisions.find(item => item.alipay_account_id === sandbox.id)!.amount_cents, null);
       assert.deepEqual(financialSnapshot(f.connection), before);
     } finally { f.close(); }
   });
