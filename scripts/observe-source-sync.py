@@ -2,6 +2,7 @@
 import argparse
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import re
 import sqlite3
@@ -13,6 +14,28 @@ import urllib.parse
 import urllib.request
 
 MAX_SOURCE_AGE_MS = 90000
+MAX_STATUS_BYTES = 8192
+MAX_NODE_OUTPUT_BYTES = 65536
+NODE_QUERY_TIMEOUT_SECONDS = 5
+SOURCE_RUNS = [('epay_main_sync_runs', 'mainSequence'), ('epay_legacy_sync_runs', 'legacySequence')]
+NODE_SOURCE_QUERY = r'''
+import { DatabaseSync } from 'node:sqlite';
+const MAX_STATUS_BYTES = 8192;
+const database = new DatabaseSync(process.argv[1], { readOnly: true });
+try {
+  database.exec('BEGIN');
+  const status = database.prepare("SELECT value FROM system_metadata WHERE key='epay_source_sync' AND length(CAST(value AS BLOB)) <= ?").get(MAX_STATUS_BYTES);
+  const latest = table => {
+    const row = database.prepare(`SELECT sequence,captured_at FROM ${table} ORDER BY sequence DESC LIMIT 1`).get();
+    return row && Number.isSafeInteger(row.sequence) && Number.isSafeInteger(row.captured_at)
+      ? [row.sequence, row.captured_at] : null;
+  };
+  const runs = Object.fromEntries(['epay_main_sync_runs', 'epay_legacy_sync_runs'].map(table => [table, status ? latest(table) : null]));
+  process.stdout.write(JSON.stringify({ status: status ? [status.value] : null, runs }));
+} finally {
+  database.close();
+}
+'''
 SAFE_REASONS = {
     'request_timeout', 'source_query_timeout', 'database_busy', 'connection_failure',
     'source_lock_cleanup_failed', 'source_lock_deadline', 'source_lock_window',
@@ -42,11 +65,13 @@ def parse_time(value):
     raise ValueError('UTC source timestamp required')
 
 
-def source_status(connection, now):
-    row = connection.execute("SELECT value FROM system_metadata WHERE key='epay_source_sync'").fetchone()
+def proof_status(row, runs, now):
     if row is None:
         return {'ready': False, 'reason': 'source_status_missing'}
     try:
+        if (not isinstance(row, (list, tuple)) or len(row) != 1 or not isinstance(row[0], str) or
+                len(row[0].encode('utf-8')) > MAX_STATUS_BYTES):
+            raise ValueError('invalid source metadata')
         status = json.loads(row[0])
         captured = parse_time(status.get('capturedAt'))
         applied = status.get('appliedAt')
@@ -54,12 +79,47 @@ def source_status(connection, now):
         valid = (type(status.get('version')) is int and status['version'] == 1 and status.get('ok') is True and 0 <= age <= MAX_SOURCE_AGE_MS and
                  type(applied) is int and captured <= applied <= now and
                  isinstance(status.get('sourceSha256'), str) and re.fullmatch('[a-f0-9]{64}', status['sourceSha256']) is not None)
-        for table, field in [('epay_main_sync_runs', 'mainSequence'), ('epay_legacy_sync_runs', 'legacySequence')]:
-            latest = connection.execute('SELECT sequence,captured_at FROM ' + table + ' ORDER BY sequence DESC LIMIT 1').fetchone()
-            valid = valid and latest is not None and type(status.get(field)) is int and latest[0] == status[field] and latest[1] <= captured
+        for table, field in SOURCE_RUNS:
+            latest = runs.get(table)
+            valid = (valid and isinstance(latest, (list, tuple)) and len(latest) == 2 and
+                     type(latest[0]) is int and type(latest[1]) is int and
+                     type(status.get(field)) is int and latest[0] == status[field] and latest[1] <= captured)
         return {'ready': bool(valid), 'sourceAgeMs': age, 'reason': None if valid else 'source_proof_not_ready'}
     except (ValueError, TypeError, AttributeError):
         return {'ready': False, 'reason': 'source_status_invalid'}
+
+
+def source_status(connection, now):
+    row = connection.execute("SELECT value FROM system_metadata WHERE key='epay_source_sync'").fetchone()
+    runs = {} if row is None else {table: connection.execute(
+        'SELECT sequence,captured_at FROM ' + table + ' ORDER BY sequence DESC LIMIT 1').fetchone()
+        for table, _ in SOURCE_RUNS}
+    return proof_status(row, runs, int(time.time()*1000) if now is None else now)
+
+
+def node_source_status(database, now, node):
+    """Use the configured runtime when old Python SQLite cannot parse STRICT schemas."""
+    completed = subprocess.run([node, '--input-type=module', '-e', NODE_SOURCE_QUERY, str(database)],
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True,
+                               timeout=NODE_QUERY_TIMEOUT_SECONDS, check=False)
+    if completed.returncode != 0 or len(completed.stdout.encode('utf-8')) > MAX_NODE_OUTPUT_BYTES:
+        raise ValueError('source_read_unavailable')
+    reply = json.loads(completed.stdout)
+    if (not isinstance(reply, dict) or set(reply) != {'status', 'runs'} or
+            not isinstance(reply['runs'], dict) or set(reply['runs']) != {table for table, _ in SOURCE_RUNS}):
+        raise ValueError('source_read_unavailable')
+    return proof_status(reply['status'], reply['runs'], int(time.time()*1000) if now is None else now)
+
+
+def read_source_status(data_root, now=None, node=None):
+    database = Path(data_root, 'data/perpay.sqlite3')
+    if node is not None:
+        return node_source_status(database, now, node)
+    connection = sqlite3.connect(database.as_uri() + '?mode=ro', uri=True, timeout=1)
+    try:
+        return source_status(connection, now)
+    finally:
+        connection.close()
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -116,12 +176,15 @@ def journal_summary(lines):
 def main(arguments=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data-root', required=True)
+    parser.add_argument('--node', help='absolute Node runtime for databases unsupported by Python SQLite')
     parser.add_argument('--origin', default='http://127.0.0.1:16191')
     parser.add_argument('--duration-seconds', type=int, default=120)
     parser.add_argument('--interval-seconds', type=int, default=10)
     args = parser.parse_args(arguments)
     origin = urllib.parse.urlsplit(args.origin)
     if (not re.fullmatch('/var/lib/perpay-candidate-[a-z0-9-]+', args.data_root) or
+            (args.node is not None and (not Path(args.node).is_absolute() or
+                                       not Path(args.node).is_file() or not os.access(args.node, os.X_OK))) or
             origin.scheme != 'http' or origin.hostname not in ['127.0.0.1', '::1'] or origin.path or
             origin.username or origin.password or origin.query or origin.fragment or
             not 30 <= args.duration_seconds <= 1800 or not 5 <= args.interval_seconds <= 60):
@@ -133,13 +196,8 @@ def main(arguments=None):
     while time.monotonic() < deadline:
         sample = {'elapsedSeconds': round(time.monotonic()-started)}
         try:
-            database = Path(args.data_root, 'data/perpay.sqlite3').as_uri() + '?mode=ro'
-            connection = sqlite3.connect(database, uri=True, timeout=1)
-            try:
-                sample['source'] = source_status(connection, int(time.time()*1000))
-            finally:
-                connection.close()
-        except (OSError, sqlite3.Error):
+            sample['source'] = read_source_status(args.data_root, node=args.node)
+        except (OSError, sqlite3.Error, ValueError, subprocess.TimeoutExpired):
             sample['source'] = {'ready': False, 'reason': 'source_read_unavailable'}
         sample['readiness'] = probe(args.origin, '/pay/epay/readyz')
         samples.append(sample)

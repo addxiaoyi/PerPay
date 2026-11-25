@@ -28,9 +28,12 @@
 ```bash
 python3 scripts/observe-source-sync.py \
   --data-root /var/lib/perpay-candidate-20261123b \
+  --node /opt/perpay-runtime-20261123-node24.22.3/bin/node \
   --duration-seconds 120 --interval-seconds 10
 ```
 
 运行窗口限定 30–1800 秒，间隔 5–60 秒。每次仅做一个 readiness GET 和只读同步元数据/游标查询。最终一行 `source_sync_acceptance` 给出样本、成功同步次数、重试/失败次数、慢阶段上限及是否通过。窗口中任一不就绪、源状态不新鲜、日志不可读、没有完成一次同步、发生重试或最终失败，均退出 1；只有全部符合才退出 0。观察结束后的单次健康恢复不能覆盖窗口内失败。
+
+旧版 Python 附带的 SQLite 可能无法识别当前数据库的 `STRICT` 表。此时显式传入绝对路径 `--node`，观察器会用该 Node 的 `node:sqlite` 以 `readOnly: true` 打开数据库，在一个只读事务中读取有大小上限的同步证明和两个最新游标，再复用相同的证明校验。该选项不会启动同步或修改数据库；输出仍只有固定状态、耗时和错误分类。省略时保留 Python SQLite 的只读路径，不会自动改用 PATH 中的其他程序。
 
 这份结果只证明给定窗口，不能证明长期可用性；账本一致、官方支付确认和商户实际入账仍需独立核对。诊断工件位于 `artifacts/source-sync-automation-20261125/`，其中抓取脚本仅抓取、不会提交候选 delta。
