@@ -52,6 +52,13 @@ def render(epay, workspace, open_orders, separate_portals=False):
     else:
         additional = ''.join('location = ' + path + ' { return 302 /pay/admin/merchant-workspace$is_args$args; }\n' for path in WORKSPACE_PATHS)
     additional += ''.join(proxy('= ' + path, 'http://127.0.0.1:16191', True, open_orders) for path in ORDER_PATHS[2:])
+    for action in ['orders', 'query', 'refund']:
+        path = '/pay/epay/balance/' + action
+        route = proxy('= ' + path, 'http://127.0.0.1:16191', action != 'query', open_orders)
+        if 'location = ' + path + ' {' in workspace:
+            workspace = replace_exact(workspace, path, route)
+        else:
+            workspace += '\n' + route
     additional += proxy('= /pay/epay/api.php', 'http://127.0.0.1:16191')
     additional += proxy('= /pay/epay/checkout-status', 'http://127.0.0.1:16191')
     additional += proxy('= /pay/checkout-status', 'http://127.0.0.1:16191/pay/epay/checkout-status')

@@ -25,6 +25,9 @@ export function requestRefund(database: RefundDatabase, access: RefundAccess, in
     }
     const order = readConfirmedOrder(sql, command.tradeNo, access.epayMerchantId);
     if (!order) throw new RefundConflict("refund requires a confirmed native payment");
+    if (sql.prepare(`SELECT 1 FROM epay_tax_invoice_requests WHERE trade_no=? AND status NOT IN ('FAILED','REVERSED')
+      UNION ALL SELECT 1 FROM epay_fee_invoice_requests WHERE trade_no=? AND status NOT IN ('FAILED','REVERSED')`).get(command.tradeNo, command.tradeNo))
+      throw new RefundConflict("refund requires invoice reconciliation or red cancellation");
     const proof = order.type_code === "alipay"
       ? sql.prepare("SELECT i.seller_id account,c.provider_trade_no,c.amount_cents,c.fee_cents FROM epay_alipay_confirmations c JOIN epay_alipay_intents i ON i.trade_no=c.trade_no WHERE c.trade_no=?").get(command.tradeNo)
       : sql.prepare("SELECT i.provider_merchant_id account,c.provider_trade_no,c.amount_cents,c.fee_cents FROM epay_wechat_confirmations c JOIN epay_wechat_intents i ON i.trade_no=c.trade_no WHERE c.trade_no=?").get(command.tradeNo);

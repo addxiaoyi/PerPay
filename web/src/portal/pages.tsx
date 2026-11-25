@@ -16,6 +16,7 @@ import { MerchantConsoleEnrollment } from "@/pages/merchant-console-enrollment";
 import { MerchantConsoleManagement } from "@/pages/merchant-console-management";
 import { MerchantConsoleBalanceForm } from "@/pages/merchant-console-balance-form";
 import { MerchantConsoleAdjustments } from "@/pages/merchant-console-adjustments";
+import { MerchantTopups } from "@/pages/merchant-topups";
 import { MerchantPayouts } from "@/pages/merchant-payouts";
 import { MerchantSummary } from "./overview";
 import { PortalRecordsPage } from "./records";
@@ -32,8 +33,9 @@ export function PortalOperationPage({ section }: { section: string }) {
   const admin = mode === "admin" && role === "admin";
   if (["members", "enrollment", "management", "adjustments"].includes(section) && !admin) return <p role="alert">此功能仅限平台管理员使用。</p>;
   return <Card><CardContent className="space-y-6">
+    {section === "topups" && <MerchantTopups merchantId={merchantId} />}
     {section === "collect" && <MerchantConsoleCreateOrder merchantId={merchantId} enabled={enabled} availableChannels={collectionChannels} />}
-    {section === "invoices" && <MerchantConsoleInvoices merchantId={merchantId} />}
+    {section === "invoices" && <MerchantConsoleInvoices merchantId={merchantId} role={role} />}
     {section === "refunds" && <><MerchantConsoleRefunds merchantId={merchantId} administration={admin} requests={!admin} /><h3 className="font-medium">历史退款</h3><PortalRecordsPage kind="refunds" scoped onlySource="main_site" /></>}
     {section === "settlements" && <MerchantConsoleSettlements merchantId={merchantId} role={role} requests={!admin} />}
     {section === "fee" && <MerchantConsoleFee merchantId={merchantId} role={role} />}
@@ -47,10 +49,31 @@ export function PortalOperationPage({ section }: { section: string }) {
   </CardContent></Card>;
 }
 
-type Health = { observedAt: number; sourceSync: { ok: boolean; appliedAt: number | null }; payments: { confirmed: number; inconsistent: number; unconfirmedLedger: number; unconfirmedCallbacks: number }; refunds: { inconsistent: number }; settlements: { inconsistent: number }; channels: Array<{ provider: string; product: string; enabled: boolean }>; invoiceEnabled: boolean };
+type Health = {
+  observedAt: number;
+  sourceSync: { ok: boolean; appliedAt: number | null };
+  payments: { confirmed: number; inconsistent: number; unconfirmedLedger: number; unconfirmedCallbacks: number };
+  paymentRecovery?: { pending: number; overdue: number; stalled: number; invalid: number };
+  callbacks?: { failed: number; delayed: number; awaitingMerchant: number };
+  refunds: { inconsistent: number };
+  settlements: { inconsistent: number };
+  channels: Array<{ provider: string; product: string; enabled: boolean }>;
+  invoiceEnabled: boolean;
+};
 export function PortalSystemPage() {
   const portal = usePortal(), params = portalParams(portal);
   const health = useQuery({ queryKey: ["merchant-console", params.merchantId, "portal-system"], queryFn: ({ signal }) => merchantRequest<Health>("portal/system", params, signal), retry: false, refetchInterval: 30000 });
-  return <ConsoleQuery query={health}>{value => <div className="space-y-6"><Card><CardHeader><CardTitle>运行状态</CardTitle></CardHeader><CardContent><dl className="grid gap-6 sm:grid-cols-2"><Status label="新订单入口" value={portal.enabled ? "已开放" : "维护中"} /><Status label="历史数据同步" value={value.sourceSync.ok && value.sourceSync.appliedAt && value.observedAt - value.sourceSync.appliedAt < 90000 ? "同步正常" : "等待核对"} /><Status label="支付与账本核对" value={value.payments.inconsistent + value.payments.unconfirmedLedger + value.payments.unconfirmedCallbacks === 0 ? "无差异" : "存在差异，请检查"} /><Status label="退款与结算核对" value={value.refunds.inconsistent + value.settlements.inconsistent === 0 ? "无差异" : "存在差异，请检查"} /><Status label="新开票申请" value={value.invoiceEnabled ? "已开放" : "已关闭，保留历史记录"} /><Status label="最近检查" value={dateText(value.observedAt)} /></dl></CardContent></Card><Card><CardHeader><CardTitle>支付通道</CardTitle></CardHeader><CardContent><ul className="divide-y">{value.channels.map((channel, index) => <li className="flex justify-between gap-4 py-4" key={`${channel.provider}:${index}`}><span>{channel.provider === "ALIPAY" ? "支付宝" : channel.provider === "WECHAT" ? "微信支付" : "支付通道"} · {({ NATIVE: "扫码收款", WAP: "手机网页", PAGE: "网页支付", PC: "电脑网页", JSAPI: "公众号支付", PRECREATE: "扫码收款" })[channel.product.toUpperCase()] ?? "已保存配置"}</span><span className="text-sm text-muted-foreground">{channel.enabled ? "已启用" : "未启用"}</span></li>)}</ul></CardContent></Card></div>}</ConsoleQuery>;
+  return <ConsoleQuery query={health}>{value => <div className="space-y-6">
+    <Card><CardHeader><CardTitle>运行状态</CardTitle></CardHeader><CardContent><dl className="grid gap-6 sm:grid-cols-2">
+      <Status label="历史数据同步" value={value.sourceSync.ok ? "同步正常" : "同步超期或待核对"} />
+      <Status label="支付与账本核对" value={value.payments.inconsistent + value.payments.unconfirmedLedger + value.payments.unconfirmedCallbacks === 0 ? "无差异" : "存在差异，请检查"} />
+      {value.paymentRecovery && <Status label="官方查单" value={`待核对 ${value.paymentRecovery.pending} 笔，超期 ${value.paymentRecovery.overdue} 笔，停滞 ${value.paymentRecovery.stalled} 笔，数据异常 ${value.paymentRecovery.invalid} 笔`} />}
+      {value.callbacks && <Status label="商户回调" value={`失败 ${value.callbacks.failed} 笔，超期 ${value.callbacks.delayed} 笔，等待重试超过 10 分钟 ${value.callbacks.awaitingMerchant} 笔`} />}
+      <Status label="退款与结算核对" value={value.refunds.inconsistent + value.settlements.inconsistent === 0 ? "无差异" : "存在差异，请检查"} />
+      <Status label="开票服务" value={value.invoiceEnabled ? "已开启" : "已关闭"} />
+      <Status label="最近检查" value={dateText(value.observedAt)} />
+    </dl></CardContent></Card>
+    <Card><CardHeader><CardTitle>支付通道</CardTitle></CardHeader><CardContent><ul className="divide-y">{value.channels.map((channel, index) => <li className="flex justify-between gap-4 py-4" key={`${channel.provider}:${index}`}><span>{channel.provider === "ALIPAY" ? "支付宝" : channel.provider === "WECHAT" ? "微信支付" : "支付通道"} · {({ NATIVE: "扫码收款", WAP: "手机网页", PAGE: "网页支付", PC: "电脑网页", JSAPI: "公众号支付", PRECREATE: "扫码收款" })[channel.product.toUpperCase()] ?? "已保存配置"}</span><span className="text-sm text-muted-foreground">{channel.enabled ? "已启用" : "未启用"}</span></li>)}</ul></CardContent></Card>
+  </div>}</ConsoleQuery>;
 }
 function Status({ label, value }: { label: string; value: string }) { return <div><dt className="text-sm text-muted-foreground">{label}</dt><dd className="mt-2 font-medium">{value}</dd></div>; }

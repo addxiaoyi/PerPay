@@ -8,6 +8,7 @@ type Options = {
   clock?: () => number;
   intervalMilliseconds: number;
   maximumPerRun: number;
+  maximumConcurrency?: number;
   onError: (code: string) => void;
 };
 
@@ -22,6 +23,7 @@ export class EPayPaymentQueryScheduler {
 
   constructor(options: Options) {
     if (!Number.isSafeInteger(options.intervalMilliseconds) || options.intervalMilliseconds < 1000 || options.intervalMilliseconds > 60_000 || !Number.isSafeInteger(options.maximumPerRun) || options.maximumPerRun < 1 || options.maximumPerRun > 20) throw new Error("invalid EPay payment query schedule");
+    if (options.maximumConcurrency !== undefined && (!Number.isSafeInteger(options.maximumConcurrency) || options.maximumConcurrency < 1 || options.maximumConcurrency > 3)) throw new Error("invalid EPay query concurrency");
     this.#options = options;
   }
 
@@ -60,12 +62,17 @@ export class EPayPaymentQueryScheduler {
 
   async #run(): Promise<number> {
     let processed = 0;
-    while (!this.#stopped && processed < this.#options.maximumPerRun) {
-      const job = reservePaymentQuery(this.#options.database, this.#now());
-      if (!job) break;
-      await this.#query(job);
-      processed++;
-    }
+    const worker = async () => {
+      while (!this.#stopped && processed < this.#options.maximumPerRun) {
+        const job = reservePaymentQuery(this.#options.database, this.#now(), () => this.#options.onError("epay_payment_query_state_invalid"));
+        if (!job) break;
+        processed++;
+        await this.#query(job);
+      }
+    };
+    const workers = await Promise.allSettled(Array.from({ length: this.#options.maximumConcurrency ?? 1 }, worker));
+    const failures = workers.filter((entry): entry is PromiseRejectedResult => entry.status === "rejected");
+    if (failures.length) throw new AggregateError(failures.map(entry => entry.reason), "EPay payment query run failed");
     this.#lastRunAt = this.#now();
     return processed;
   }

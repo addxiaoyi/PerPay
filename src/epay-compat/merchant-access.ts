@@ -20,6 +20,7 @@ export async function authorizeMerchant(options: {
   merchantId: string;
   database: Pick<AppDatabase, "read">;
   fetch?: typeof fetch;
+  signal?: AbortSignal;
 }): Promise<Access & { epayMerchantId: number; mainApiId: string }> {
   if (!options.cookie || options.cookie.length > 8192 || /[\r\n]/.test(options.cookie)) throw new MerchantAccessError("unauthenticated");
   if (!options.merchantId || options.merchantId !== options.merchantId.trim() || options.merchantId.length > 128) throw new MerchantAccessError("forbidden");
@@ -31,7 +32,7 @@ export async function authorizeMerchant(options: {
   target.searchParams.set("merchantId", options.merchantId);
   let response: Response;
   try {
-    response = await (options.fetch ?? fetch)(target, { method: "GET", headers: { accept: "application/json", cookie: options.cookie }, redirect: "error", cache: "no-store", signal: AbortSignal.timeout(5000) });
+    response = await (options.fetch ?? fetch)(target, { method: "GET", headers: { accept: "application/json", cookie: options.cookie }, redirect: "error", cache: "no-store", signal: options.signal ?? AbortSignal.timeout(5000) });
   } catch { throw new MerchantAccessError("unavailable"); }
   if (response.status === 401) throw new MerchantAccessError("unauthenticated");
   if (response.status === 403 || response.status === 404) throw new MerchantAccessError("forbidden");

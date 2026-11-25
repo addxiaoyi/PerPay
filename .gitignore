@@ -44,4 +44,6 @@ backups/
 /release/
 /.codegraph/
 /.codex-shadow-check-*/
+/artifacts/
+/.release-verification/
 **/__pycache__/

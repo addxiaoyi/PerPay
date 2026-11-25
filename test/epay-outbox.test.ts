@@ -7,6 +7,29 @@ import { it } from "node:test";
 import { AppDatabase } from "../src/database/database.ts";
 import { EPayCallbackOutbox, enqueuePaidCallback } from "../src/epay-compat/outbox.ts";
 
+it("switches an unsupported POST format without waiting through the extended outage window", async () => {
+  const directory=mkdtempSync(join(tmpdir(),"perpay-callback-format-"));
+  const db=await AppDatabase.open(join(directory,"db.sqlite"),{masterKey:randomBytes(32)});
+  try {
+    db.write(sql=>sql.exec(`INSERT INTO epay_merchant_accounts(merchant_id,name,balance_cents,enabled,created_at,updated_at) VALUES(1,'fixture',0,1,0,0);
+      INSERT INTO epay_orders(trade_no,out_trade_no,merchant_id,name,money_cents,real_money_cents,notify_url,status,notify_status,notify_count,created_at,updated_at)
+      VALUES('format','external',1,'fixture',100,100,'https://merchant.example/notify','PAID','PENDING',0,0,0)`));
+    const queue=new EPayCallbackOutbox(db);queue.enqueue('format',1,100);
+    let now=100;
+    for(let index=0;index<3;index++){
+      const claim=queue.claim(now,30_000,80)!;
+      assert.equal(claim.method,'POST');
+      queue.complete({...claim,now,acknowledged:false,httpStatus:405,retryDelayMilliseconds:30_000,retryMaximumDelayMilliseconds:3_600_000,maximumAttempts:80});
+      now=Number(db.read(sql=>sql.prepare("SELECT next_attempt_at FROM epay_callback_jobs WHERE trade_no='format'").get()?.next_attempt_at));
+    }
+    const fallback=queue.claim(now,30_000,80)!;
+    assert.equal(fallback.method,'GET');
+    assert.ok(now<180_100);
+    queue.complete({...fallback,now,acknowledged:true,retryDelayMilliseconds:30_000,retryMaximumDelayMilliseconds:3_600_000,maximumAttempts:80});
+    assert.equal(queue.claim(now,30_000,80),null);
+  } finally {db.close();rmSync(directory,{recursive:true,force:true});}
+});
+
 it("persists callback attempts, fences stale leases and retries after restart", async () => {
   const dir = mkdtempSync(join(tmpdir(), "perpay-epay-outbox-"));
   const path = join(dir, "db.sqlite");

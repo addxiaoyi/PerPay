@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { isBalanceTopup } from "./topup-kind.ts";
 import type { AppDatabase } from "../database/database.ts";
 import { appendAuditEvent } from "../database/identity-store.ts";
 import { verifyMainOrderAccess } from "./main-order-access.ts";
@@ -18,7 +19,9 @@ export function requestMainInvoice(database: Pick<AppDatabase, "write">, request
   return database.write(sql => {
     const access = verifyMainOrderAccess(sql, request.token, "invoice:create", request.orderId, now);
     if (!access) throw new MainInvoiceError("invoice_access_denied");
+    if(isBalanceTopup(sql,access.tradeNo))throw new MainInvoiceError('invoice_topup_not_sale');
     if (!readConfirmedOrder(sql, access.tradeNo, access.merchantId)) throw new MainInvoiceError("invoice_not_ready");
+    if (sql.prepare("SELECT 1 FROM epay_tax_invoice_requests WHERE trade_no=?").get(access.tradeNo)) throw new MainInvoiceError("invoice_already_requested");
     const order = sql.prepare("SELECT out_trade_no FROM epay_orders WHERE trade_no=? AND merchant_id=?").get(access.tradeNo, access.merchantId)!;
     const issued = sql.prepare("SELECT 1 FROM epay_invoices WHERE merchant_id=? AND trade_no=? LIMIT 1").get(access.merchantId, access.tradeNo);
     if (issued) throw new MainInvoiceError("invoice_already_requested");

@@ -12,9 +12,6 @@ concurrency:
   group: release
   cancel-in-progress: false
 
-env:
-  IMAGE_NAME: ghcr.io/mashiro0619/perpay
-
 jobs:
   verify:
     runs-on: ubuntu-24.04
@@ -26,6 +23,7 @@ jobs:
       compose_image_tag: ${{ steps.release.outputs.compose_image_tag }}
       database_minimum: ${{ steps.release.outputs.database_minimum }}
       database_maximum: ${{ steps.release.outputs.database_maximum }}
+      image_name: ${{ steps.release_target.outputs.image_name }}
     steps:
       - name: Check out the release tag
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -36,8 +34,12 @@ jobs:
       - name: Use the pinned Node.js release
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.22.1
+          node-version: 24.22.3
           cache: npm
+
+      - name: Validate repository-scoped release target
+        id: release_target
+        run: node scripts/release-target.mjs >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: npm ci --ignore-scripts
@@ -67,13 +69,21 @@ jobs:
           fi
           echo "commit=${release_commit}" >> "$GITHUB_OUTPUT"
 
+      - name: Run Python operations safety checks
+        timeout-minutes: 5
+        run: npm run test:operations
+
+      - name: Run StarMC payment durability integration checks
+        timeout-minutes: 5
+        run: npm run test:starmc
+
       - name: Run release checks
         run: |
           npm run api:check
           npm run typecheck
           npm test
           npm run build
-          npm audit --audit-level=high
+          npm audit --audit-level=moderate --registry=https://registry.npmjs.org
 
   publish:
     needs: verify
@@ -82,6 +92,8 @@ jobs:
     permissions:
       contents: write
       packages: write
+    env:
+      IMAGE_NAME: ${{ needs.verify.outputs.image_name }}
     steps:
       - name: Check out the verified release commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -93,8 +105,11 @@ jobs:
       - name: Use the pinned Node.js release
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.22.1
+          node-version: 24.22.3
           cache: npm
+
+      - name: Validate repository-scoped publication target
+        run: node scripts/release-target.mjs --check-image "$IMAGE_NAME"
 
       - name: Install release tooling dependencies
         run: npm ci --ignore-scripts
@@ -293,11 +308,14 @@ jobs:
       - name: Render and validate the release Compose
         env:
           RELEASE_COMPOSE_TAG: ${{ needs.verify.outputs.compose_image_tag }}
+          PERPAY_IMAGE: ${{ env.IMAGE_NAME }}:${{ needs.verify.outputs.compose_image_tag }}
         run: |
           set -euo pipefail
           node scripts/render-release-compose.mjs release-assets/docker-compose.yml
           npm run demo:package
           cp dist/demo.zip release-assets/demo.zip
+          npm run operations:package
+          cp dist/operations.zip release-assets/operations.zip
           docker compose -f release-assets/docker-compose.yml config --quiet
           expected_image="${IMAGE_NAME}:${RELEASE_COMPOSE_TAG}"
           expected_images="$(printf '%s\n%s\n%s' "$expected_image" "$expected_image" "$expected_image")"
@@ -541,6 +559,7 @@ jobs:
 
           compose_sha256="$(sha256sum release-assets/docker-compose.yml | cut -d ' ' -f1)"
           demo_sha256="$(sha256sum release-assets/demo.zip | cut -d ' ' -f1)"
+          operations_sha256="$(sha256sum release-assets/operations.zip | cut -d ' ' -f1)"
           if [ -f "docs/releases/${GITHUB_REF_NAME}.md" ]; then
             cat "docs/releases/${GITHUB_REF_NAME}.md" > release-notes.md
             printf '\n' >> release-notes.md
@@ -556,6 +575,7 @@ jobs:
           - 数据库结构范围： \`${DATABASE_MINIMUM}..${DATABASE_MAXIMUM}\`
           - 部署配置校验值（SHA-256）：\`${compose_sha256}\`
           - 调用示例校验值（SHA-256）：\`${demo_sha256}\`
+          - 主机运维脚本校验值（SHA-256）：\`${operations_sha256}\`
 
           ${release_channel_note}
 
@@ -564,7 +584,7 @@ jobs:
           Linux 校验附件：\`echo "${compose_sha256}  docker-compose.yml" | sha256sum -c -\`。
 
           EOF
-          gh release create "$GITHUB_REF_NAME" release-assets/docker-compose.yml release-assets/demo.zip \
+          gh release create "$GITHUB_REF_NAME" release-assets/docker-compose.yml release-assets/demo.zip release-assets/operations.zip \
             --verify-tag \
             --title "PerPay $GITHUB_REF_NAME" \
             --notes-file release-notes.md \

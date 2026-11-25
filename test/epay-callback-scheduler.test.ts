@@ -12,6 +12,19 @@ import { recordSyntheticAlipayConfirmation } from "./epay-payment-fixture.ts";
 
 const policy = { timeoutMilliseconds: 1000, leaseMilliseconds: 2000, maximumAttempts: 2, retryDelayMilliseconds: 10 };
 
+it("keeps background recovery scheduled after a transient startup failure", async () => {
+  let calls=0;
+  const scheduler=new EPayCallbackScheduler({policy,intervalMilliseconds:250,maximumPerRun:1,onError:()=>assert.fail("unexpected timer error"),
+    processor:{async processOne(){if(++calls===1)throw new Error("temporary database failure");return false;}}});
+  try {
+    await assert.rejects(scheduler.start({background:true}),/temporary database failure/);
+    assert.equal(scheduler.health().state,"running");
+    await new Promise(resolve=>setTimeout(resolve,350));
+    assert.ok(calls>=2);
+    assert.equal(scheduler.health().consecutiveFailures,0);
+  } finally {await scheduler.stop();}
+});
+
 it("does not leave a timer active after the initial run fails", async () => {
   let calls = 0;
   const scheduler = new EPayCallbackScheduler({ policy, intervalMilliseconds: 250, maximumPerRun: 1, onError: () => assert.fail("unexpected timer run"), processor: {

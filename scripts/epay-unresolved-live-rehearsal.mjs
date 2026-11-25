@@ -1,0 +1,64 @@
+import { readFileSync, mkdtempSync, rmSync, statfsSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { join } from "node:path";
+import { createConnection } from "mysql2/promise";
+import { AppDatabase } from "../dist/database/database.js";
+import { mysqlSnapshotConfig } from "../dist/epay-compat/mysql-snapshot.js";
+import { captureEPaySnapshot, SOURCE_TABLES } from "../dist/epay-compat/snapshot.js";
+import { readAuthenticatedEPaySnapshot } from "../dist/epay-compat/authenticated-snapshot.js";
+import { deriveMerchantFeeCandidates } from "../dist/epay-compat/merchant-fee-candidates.js";
+import { stageUnresolvedIsolatedSnapshot } from "../dist/epay-compat/isolated-unresolved-stage.js";
+import { readMainPaymentArchive } from "../dist/epay-compat/main-payment-archive.js";
+import { RuntimeSecretCipher } from "../dist/settings/crypto.js";
+import { summarizeUnboundOrders } from "./unbound-order-summary.mjs";
+import { auditUnboundTradeEvidence } from "../dist/epay-compat/unbound-trade-audit.js";
+import { auditUnboundCallbackEvidence } from "../dist/epay-compat/unbound-callback-audit.js";
+
+if (process.env.EPAY_ISOLATED_TEST !== "1" || statfsSync("/dev/shm").type !== 0x01021994) throw new Error("tmpfs rehearsal required");
+const pid = process.env.EPAY_SOURCE_PID;
+if (!pid || !/^[1-9]\d*$/.test(pid)) throw new Error("source process ID required");
+const urls = readFileSync(`/proc/${pid}/environ`, "utf8").split("\0").filter(entry => entry.startsWith("DATABASE_URL="));
+if (urls.length !== 1) throw new Error("source database configuration unavailable");
+const url = new URL(urls[0].slice("DATABASE_URL=".length));
+url.search = "";
+const payment = JSON.parse(readFileSync("/www/wwwroot/starmc-api/data/store.json", "utf8")).payment;
+const directory = mkdtempSync("/dev/shm/perpay-unresolved-rehearsal-");
+const key = randomBytes(32);
+let source, snapshotDb, target;
+try {
+  source = await createConnection(mysqlSnapshotConfig(url.href));
+  await source.query("SET SESSION time_zone = '+08:00'");
+  const [tableRows] = await source.query("SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()");
+  const engines = new Map(tableRows.map(row => [row.TABLE_NAME, row.ENGINE]));
+  const tables = Object.keys(SOURCE_TABLES);
+  if ([...engines.keys()].some(name => !tables.includes(name)) || tables.some(name => engines.get(name)?.toUpperCase() !== "INNODB")) throw new Error("source table validation failed");
+  snapshotDb = await AppDatabase.open(join(directory, "snapshot.sqlite"), { masterKey: key });
+  const options = { source, database: snapshotDb, masterKey: key, instanceId: snapshotDb.instanceId(), sourceName: "live-readonly-unresolved-rehearsal", requireColumnMetadata: true };
+  const snapshot = await captureEPaySnapshot(options);
+  const rows = readAuthenticatedEPaySnapshot(options, snapshot.snapshotId);
+  const boundLegacyIds = rows.tables.MerchantBinding.map(row => row.epayMerchantId);
+  const unboundTrades = auditUnboundTradeEvidence({ mainOrders: payment.orders, legacyOrders: rows.tables.Order, boundLegacyIds });
+  const unboundCallbacks = auditUnboundCallbackEvidence({ merchants: payment.merchants, orders: payment.orders, legacyOrders: rows.tables.Order, legacyMerchants: rows.tables.Merchant, boundLegacyIds });
+  const candidates = deriveMerchantFeeCandidates(options, snapshot.snapshotId, payment);
+  const assumedRates = Object.fromEntries(rows.tables.Merchant.map(row => [String(row.id), 0]));
+  const merchantFeeBps = { ...assumedRates, ...candidates.rates };
+  target = await AppDatabase.open(join(directory, "target.sqlite"), { masterKey: key });
+  const instanceId = target.instanceId();
+  const cipher = new RuntimeSecretCipher(key, instanceId);
+  const guard = cipher.createGuard();
+  target.write(db => db.prepare("INSERT INTO runtime_master_key_guard(singleton_key,cipher_version,nonce,ciphertext,authentication_tag,created_at) VALUES(1,1,?,?,?,0)").run(guard.nonce, guard.ciphertext, guard.authenticationTag));
+  const report = stageUnresolvedIsolatedSnapshot(target, { ...options, merchantFeeBps, sourceOffsetMinutes: 480 }, snapshot.snapshotId, payment);
+  target.close();
+  target = await AppDatabase.open(join(directory, "target.sqlite"), { masterKey: key });
+  if (!target.integrityCheck().ok || target.instanceId() !== instanceId || target.read(db => readMainPaymentArchive(db, cipher)) !== JSON.stringify(payment)) throw new Error("reopened quarantine validation failed");
+  console.log(JSON.stringify({ sourceCounts: snapshot.counts, unboundEvidence: summarizeUnboundOrders(rows.tables), unboundTrades, unboundCallbacks, derivedCandidateFees: Object.keys(candidates.rates).length, placeholderFees: candidates.unresolved.length, unresolvedMainMerchants: report.unresolvedMainMerchants, merchantFees: report.merchantFees, mainAccountingImported: report.mainAccountingImported, reopenedIntegrity: true, mainSource: "stale_disk_reference", coordinatedCutoff: false, financiallyReconciled: false, productionReady: false }));
+} catch {
+  console.error("isolated rehearsal failed; no production records changed");
+  process.exitCode = 1;
+} finally {
+  target?.close();
+  snapshotDb?.close();
+  await source?.end();
+  key.fill(0);
+  rmSync(directory, { recursive: true, force: true });
+}

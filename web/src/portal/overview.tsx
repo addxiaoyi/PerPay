@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ArrowRight, ChevronRight } from "lucide-react";
+import { ArrowRight, ChevronRight, TriangleAlert } from "lucide-react";
 import { merchantRequest, centsText, dateText } from "@/api/merchant-console";
 import { ConsoleQuery } from "@/components/merchant-console-state";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,10 @@ export function PortalOverviewPage({ scoped = false, tasksOnly = false }: { scop
   const overview = useQuery({ queryKey: ["merchant-console", params.merchantId, "portal-overview", params.scope, days], queryFn: ({ signal }) => merchantRequest<PortalOverview>("portal/overview", { ...params, days: String(days) }, signal), retry: false, refetchInterval: 30000 });
   const recent = useQuery({ queryKey: ["merchant-console", params.merchantId, "portal-recent", params.scope], queryFn: ({ signal }) => merchantRequest<{ records: PortalRecord[] }>("portal/orders", params, signal), retry: false });
   return <ConsoleQuery query={overview}>{value => <div className="space-y-6">
+    {!!value.tasks.failedPaidCallbacks && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4">
+      <p className="flex items-center gap-2 font-medium"><TriangleAlert aria-hidden="true" className="size-5 shrink-0" />{value.tasks.failedPaidCallbacks} 笔订单已支付，商户回调投递失败。</p>
+      <Link className="underline underline-offset-4" to={`${base}/notifications${suffix}${suffix ? "&" : "?"}status=failed`}>查看失败回调</Link>
+    </div>}
     {!tasksOnly && <><div className="grid grid-cols-2 gap-4 xl:grid-cols-4">{[
       ["今日收款金额", `¥${centsText(value.today.amountCents)}`], ["今日收款笔数", String(value.today.confirmed)], ["当前待付款", String(value.pending)], ["需处理事项", String(value.tasks.callbacks + value.tasks.refunds + value.tasks.settlements)],
     ].map(([label, number]) => <Card key={label}><CardContent><p className="text-sm text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-semibold tabular-nums">{number}</p></CardContent></Card>)}</div>

@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { AppDatabase } from "../database/database.ts";
+import { hasBalanceOrder } from "./balance-order-contract.ts";
+import { isBalanceTopup } from "./topup-kind.ts";
 
 type Database = Pick<AppDatabase, "read" | "write">;
 type JobRow = { trade_no: string; merchant_id: bigint | number; attempts: bigint | number; next_method: "POST" | "GET"; retry_base_attempts: bigint | number; retry_base_gets: bigint | number };
@@ -17,6 +19,12 @@ export function enqueuePaidCallback(db: DatabaseSync, tradeNo: string, merchantI
   const order = db.prepare(`SELECT trade_no FROM epay_orders WHERE trade_no = ? AND merchant_id = ?
     AND status = 'PAID' AND money_cents > 0 AND real_money_cents = money_cents`).get(tradeNo, merchantId);
   if (!order) throw new Error("order is not an exact-amount confirmed payment for this merchant");
+  if(isBalanceTopup(db,tradeNo)){
+    const inserted=db.prepare(`INSERT INTO epay_callback_jobs(trade_no,merchant_id,status,next_attempt_at,created_at,updated_at)
+      VALUES(?,?,'SUCCEEDED',?,?,?) ON CONFLICT(trade_no) DO NOTHING`).run(tradeNo,merchantId,now,now,now);
+    db.prepare("UPDATE epay_orders SET notify_status='SUCCESS' WHERE trade_no=? AND merchant_id=?").run(tradeNo,merchantId);
+    return Number(inserted.changes)===1;
+  }
   const inserted = db.prepare(`INSERT INTO epay_callback_jobs(trade_no, merchant_id, status, next_attempt_at, created_at, updated_at)
     VALUES (?, ?, 'PENDING', ?, ?, ?) ON CONFLICT(trade_no) DO NOTHING`).run(tradeNo, merchantId, now, now, now);
   return Number(inserted.changes) === 1;
@@ -66,7 +74,7 @@ export class EPayCallbackOutbox {
       const attemptNumber = Number(job.attempts) + 1;
       db.prepare(`UPDATE epay_callback_jobs SET status = 'LEASED', attempts = ?, lease_token = ?, lease_until = ?, updated_at = ? WHERE trade_no = ?`)
         .run(attemptNumber, token, now + leaseMilliseconds, now, job.trade_no);
-      const mainOrder = !!db.prepare("SELECT 1 FROM epay_main_native_orders WHERE trade_no=?").get(job.trade_no);
+      const mainOrder = !!db.prepare("SELECT 1 FROM epay_main_native_orders WHERE trade_no=?").get(job.trade_no) || hasBalanceOrder(db, job.trade_no);
       const wireFormat = mainOrder ? job.next_method === "POST" ? "main_form" : "main_json" : job.next_method === "POST" ? "epay_form" : "epay_query";
       db.prepare(`INSERT INTO epay_callback_attempts(attempt_id, trade_no, attempt_number, started_at, outcome, method, wire_format) VALUES (?, ?, ?, ?, 'STARTED', ?, ?)`)
         .run(attemptId, job.trade_no, attemptNumber, now, job.next_method, wireFormat);
@@ -77,11 +85,12 @@ export class EPayCallbackOutbox {
     });
   }
 
-  complete(input: { tradeNo: string; attemptId: string; leaseToken: string; now: number; acknowledged: boolean; retryable?: boolean; retryDelayMilliseconds: number; maximumAttempts: number; httpStatus?: number; errorCode?: string }): void {
+  complete(input: { tradeNo: string; attemptId: string; leaseToken: string; now: number; acknowledged: boolean; retryable?: boolean; retryDelayMilliseconds: number; retryMaximumDelayMilliseconds?: number; maximumAttempts: number; httpStatus?: number; errorCode?: string }): void {
     integer(input.now, "time");
     integer(input.retryDelayMilliseconds, "retry delay", 1);
     integer(input.maximumAttempts, "maximum attempts", 1);
     if (input.maximumAttempts > 100 || !Number.isSafeInteger(input.now + input.retryDelayMilliseconds)) throw new Error("invalid callback retry policy");
+    if (input.retryMaximumDelayMilliseconds !== undefined && (!Number.isSafeInteger(input.retryMaximumDelayMilliseconds) || input.retryMaximumDelayMilliseconds < input.retryDelayMilliseconds || input.retryMaximumDelayMilliseconds > 86_400_000 || !Number.isSafeInteger(input.now + input.retryMaximumDelayMilliseconds))) throw new Error("invalid callback backoff policy");
     if (input.httpStatus !== undefined && (!Number.isInteger(input.httpStatus) || input.httpStatus < 100 || input.httpStatus > 599)) throw new Error("invalid HTTP status");
     if (input.errorCode !== undefined && !/^[a-z0-9_]{1,64}$/.test(input.errorCode)) throw new Error("invalid error code");
     this.#database.write((db) => {
@@ -91,17 +100,21 @@ export class EPayCallbackOutbox {
         .get(input.tradeNo, input.leaseToken, input.now, input.attemptId) as (JobRow & { started_at: bigint | number }) | undefined;
       if (!job) throw new Error("callback lease is stale or does not match");
       if (BigInt(input.now) < BigInt(job.started_at)) throw new Error("callback completion predates attempt");
-      const mainOrder = !!db.prepare("SELECT 1 FROM epay_main_native_orders WHERE trade_no=?").get(input.tradeNo);
+      const mainOrder = !!db.prepare("SELECT 1 FROM epay_main_native_orders WHERE trade_no=?").get(input.tradeNo) || hasBalanceOrder(db, input.tradeNo);
+      const formatAttempts = input.retryMaximumDelayMilliseconds === undefined ? input.maximumAttempts : Math.min(input.maximumAttempts, 3);
       const fallback = !input.acknowledged && job.next_method === 'POST' && (mainOrder
         ? input.retryable !== false
-        : Number(job.attempts) - Number(job.retry_base_attempts) >= input.maximumAttempts && (input.httpStatus === 405 || input.httpStatus === 415));
+        : Number(job.attempts) - Number(job.retry_base_attempts) >= formatAttempts && (input.httpStatus === 405 || input.httpStatus === 415));
       const methodAttempts = job.next_method === 'POST' ? Number(job.attempts) - Number(job.retry_base_attempts) : Number((db.prepare("SELECT count(*) AS count FROM epay_callback_attempts WHERE trade_no = ? AND method = 'GET'").get(input.tradeNo) as { count: number | bigint }).count) - Number(job.retry_base_gets);
       const retry = !input.acknowledged && (fallback || (input.retryable !== false && methodAttempts < input.maximumAttempts));
+      // Persist the next deadline so downtime and process restarts retain the retry window.
+      const delay = input.retryMaximumDelayMilliseconds === undefined || fallback ? input.retryDelayMilliseconds
+        : Math.min(input.retryMaximumDelayMilliseconds, input.retryDelayMilliseconds * 2 ** Math.min(methodAttempts - 1, 30));
       const outcome = input.acknowledged ? "SUCCESS" : retry ? "RETRY" : "FAILED";
       db.prepare(`UPDATE epay_callback_attempts SET outcome = ?, finished_at = ?, http_status = ?, error_code = ? WHERE attempt_id = ?`)
         .run(outcome, input.now, input.httpStatus ?? null, input.errorCode ?? null, input.attemptId);
       db.prepare(`UPDATE epay_callback_jobs SET status = ?, next_attempt_at = ?, next_method = ?, lease_token = NULL, lease_until = NULL, updated_at = ? WHERE trade_no = ?`)
-        .run(input.acknowledged ? "SUCCEEDED" : retry ? "PENDING" : "FAILED", retry ? input.now + input.retryDelayMilliseconds : input.now, fallback ? "GET" : job.next_method, input.now, input.tradeNo);
+        .run(input.acknowledged ? "SUCCEEDED" : retry ? "PENDING" : "FAILED", retry ? input.now + delay : input.now, fallback ? "GET" : job.next_method, input.now, input.tradeNo);
       const order = db.prepare(`UPDATE epay_orders SET notify_status = ? WHERE trade_no = ? AND merchant_id = ?`)
         .run(input.acknowledged ? "SUCCESS" : retry ? "PENDING" : "FAILED", input.tradeNo, job.merchant_id);
       if (Number(order.changes) !== 1) throw new Error("callback order not found");

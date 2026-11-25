@@ -34,7 +34,8 @@ export function createIsolatedGatewayRuntime(options: {
   let stopping: Promise<void> | undefined;
   let closing: Promise<void> | undefined;
   app.use("*", async (context, next) => {
-    const isOrder = ((context.req.path === "/mapi.php" || context.req.path === "/submit.php") && (context.req.method === "GET" || context.req.method === "POST")) || (context.req.path === "/main/orders" && context.req.method === "POST");
+    const isOrder = ((context.req.path === "/mapi.php" || context.req.path === "/submit.php") && (context.req.method === "GET" || context.req.method === "POST"))
+      || (["/main/orders", "/tax-invoices/applications"].includes(context.req.path) && context.req.method === "POST");
     if (!acceptingRequests || (isOrder && (!acceptingOrders || (options.admitOrder && !options.admitOrder())))) {
       context.header("Cache-Control", "no-store");
       return context.json({ code: -1, msg: "payment temporarily unavailable", isolated: true }, 503);
@@ -88,7 +89,7 @@ export function createIsolatedGatewayRuntime(options: {
   }
   return {
     app,
-    start: () => scheduler.start(),
+    start: (options?: { background?: boolean }) => scheduler.start(options),
     quiesceOrders,
     stop,
     close,

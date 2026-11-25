@@ -16,15 +16,21 @@ it("separates merchant and administrator data, retains original records, and rep
   const app = createMainMerchantConsole({ database: f.db, masterKey: f.key, identityOrigin: "http://127.0.0.1:8787", publicOrigin: "https://gateway.example", identityFetch, allowAdministration: true, clock: () => now });
   const get = (kind: string, scope = "merchant", cookie = "owner", more = "") => app.request(`/portal/${kind}?merchantId=main-1&scope=${scope}${more}`, { headers: { cookie } });
   try {
-    f.db.write(sql => sql.prepare("UPDATE epay_orders SET paid_at=?,updated_at=?").run(now, now));
+    f.db.write(sql => {
+      sql.prepare("UPDATE epay_orders SET paid_at=?,updated_at=?").run(now, now);
+      sql.prepare(`INSERT INTO epay_callback_jobs(trade_no,merchant_id,status,next_attempt_at,created_at,updated_at)
+        SELECT trade_no,merchant_id,'FAILED',?,?,? FROM epay_orders WHERE status='PAID' AND merchant_id IN (1,2)`).run(now, now, now);
+    });
     assert.equal((await get("overview", "admin", "owner")).status, 403);
     const own = await get("overview"); assert.equal(own.status, 200);
     const ownBody = await own.json() as { data: { today: { amountCents: number }; merchants: Array<{ enabled: boolean }> } };
     assert.equal(ownBody.data.today.amountCents, 1000); assert.equal(ownBody.data.merchants.length, 1);
     assert.equal(ownBody.data.merchants[0]?.enabled, true);
+    assert.equal(Reflect.get(ownBody.data, "tasks").failedPaidCallbacks, 1);
     const all = await get("overview", "admin", "admin"); assert.equal(all.status, 200);
     const allBody = await all.json() as { data: { today: { amountCents: number }; merchants: unknown[] } };
     assert.equal(allBody.data.today.amountCents, 3000); assert.equal(allBody.data.merchants.length, 3);
+    assert.equal(Reflect.get(allBody.data, "tasks").failedPaidCallbacks, 2);
     assert.equal((await get("orders", "merchant", "owner", "&targetMerchantId=main-2")).status, 403);
     const orders = await get("orders"); assert.equal(orders.status, 200);
     assert.doesNotMatch(await orders.text(), /legacy-2|Two|nonce|ciphertext|apiSecret/);

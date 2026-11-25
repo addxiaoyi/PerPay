@@ -27,7 +27,7 @@ function store(sql: DatabaseSync, state: QueryState, now: number) {
     .run(PREFIX + state.tradeNo, JSON.stringify(state), now);
 }
 
-export function reservePaymentQuery(database: Pick<AppDatabase, "write">, now: number): QueryJob | null {
+export function reservePaymentQuery(database: Pick<AppDatabase, "write">, now: number, onInvalidState?: () => void): QueryJob | null {
   if (!Number.isSafeInteger(now) || now < 0 || !Number.isSafeInteger(now + QUERY_LEASE_MS)) throw new Error("invalid EPay payment query time");
   return database.write(sql => {
     const rows = sql.prepare(`SELECT o.trade_no,o.type_code,m.value FROM epay_orders o
@@ -35,17 +35,24 @@ export function reservePaymentQuery(database: Pick<AppDatabase, "write">, now: n
       WHERE o.status='PENDING' AND o.created_at<=?
         AND ((o.type_code='alipay' AND EXISTS(SELECT 1 FROM epay_alipay_submissions s WHERE s.trade_no=o.trade_no AND s.state IN ('IN_FLIGHT','UNCERTAIN')))
           OR (o.type_code='wxpay' AND EXISTS(SELECT 1 FROM epay_wechat_submissions s WHERE s.trade_no=o.trade_no AND s.state IN ('IN_FLIGHT','UNCERTAIN'))))
-      ORDER BY coalesce(json_extract(m.value,'$.nextAt'),0),o.trade_no LIMIT 1`).all(PREFIX, now - 5_000);
-    const row = rows[0];
-    if (!row) return null;
-    if (row.type_code !== "alipay" && row.type_code !== "wxpay") throw new Error("invalid EPay query provider");
-    const tradeNo = String(row.trade_no), provider = row.type_code;
-    const current = queryState(row.value, tradeNo, provider);
-    if (current && current.nextAt > now) return null;
-    const attempt = (current?.attempt ?? 0) + 1, reservedUntil = now + QUERY_LEASE_MS;
-    if (!Number.isSafeInteger(attempt)) throw new Error("EPay query attempt limit exceeded");
-    store(sql, { version: 1, tradeNo, provider, attempt, nextAt: reservedUntil, lastOutcome: "reserved", failureSince: current?.failureSince }, now);
-    return { tradeNo, provider, attempt, reservedUntil };
+      ORDER BY CASE WHEN json_valid(m.value) THEN coalesce(json_extract(m.value,'$.nextAt'),0) ELSE 0 END,o.trade_no`).all(PREFIX, now - 5_000);
+    for (const row of rows) {
+      if (row.type_code !== "alipay" && row.type_code !== "wxpay") throw new Error("invalid EPay query provider");
+      const tradeNo = String(row.trade_no), provider = row.type_code;
+      let current: QueryState | null;
+      try { current = queryState(row.value, tradeNo, provider); }
+      catch (error) {
+        if (!onInvalidState) throw error;
+        onInvalidState();
+        continue;
+      }
+      if (current && current.nextAt > now) continue;
+      const attempt = (current?.attempt ?? 0) + 1, reservedUntil = now + QUERY_LEASE_MS;
+      if (!Number.isSafeInteger(attempt)) throw new Error("EPay query attempt limit exceeded");
+      store(sql, { version: 1, tradeNo, provider, attempt, nextAt: reservedUntil, lastOutcome: "reserved", failureSince: current?.failureSince }, now);
+      return { tradeNo, provider, attempt, reservedUntil };
+    }
+    return null;
   });
 }
 

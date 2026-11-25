@@ -49,6 +49,13 @@ const rawDeploymentConfigSchema = z.object({
   PERPAY_EPAY_MAIN_BRIDGE_SECRET_FILE: z.string().trim().min(1).optional(),
   PERPAY_EPAY_INVOICE_FEE_CENTS: z.string().regex(/^(0|[1-9]\d{0,8})$/).transform(Number).optional(),
   PERPAY_EPAY_INVOICE_ENABLED: z.enum(["true", "false"]).default("false"),
+  PERPAY_EPAY_BALANCE_PAYMENTS_ENABLED: z.enum(["true", "false"]).default("false"),
+  PERPAY_TAX_INVOICE_ENABLED: z.enum(["true", "false"]).default("false"),
+  PERPAY_TAX_INVOICE_PROVIDER: z.enum(["wechat", "fa-piao"]).default("wechat"),
+  PERPAY_TAX_INVOICE_FAPIAO_CREDENTIAL_FILE: z.string().trim().min(1).optional(),
+  PERPAY_TAX_INVOICE_AUTO_SYNC_ENABLED: z.enum(["true", "false"]).default("true"),
+  PERPAY_TAX_INVOICE_WECHAT_CREDENTIAL_ID: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
+  PERPAY_TAX_INVOICE_WECHAT_SIGNING_KEY_ID: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
   PERPAY_EPAY_WECHAT_CREDENTIAL_ID: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
   PERPAY_EPAY_WECHAT_SIGNING_KEY_ID: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
   // Kept as a non-Compose compatibility fallback for local health probes.
@@ -76,6 +83,9 @@ export interface DeploymentConfig {
   readonly merchantShadowIdentityOrigin?: string | undefined;
   readonly merchantShadowMainOrders: boolean;
   readonly merchantShadowBalance: boolean;
+  readonly taxInvoices?:
+    | { readonly provider?: "wechat"; readonly credentialId: string; readonly signingKeyId: string; readonly autoSync: boolean }
+    | { readonly provider: "fa-piao"; readonly credentialFile: string; readonly allowIssue: boolean; readonly autoSync: boolean };
   readonly epayGateway?: {
     readonly mode: "maintenance" | "live";
     readonly callbackDelivery: boolean;
@@ -84,6 +94,7 @@ export interface DeploymentConfig {
     readonly mainBridgeSecretFile?: string;
     readonly invoiceFeeCents?: number;
     readonly invoiceEnabled?: boolean;
+    readonly balancePaymentsEnabled?: boolean;
     readonly wechatCredentialId?: string;
     readonly wechatSigningKeyId?: string;
   };
@@ -100,6 +111,16 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Deploy
 
   if (isIP(parsed.data.PERPAY_HOST) === 0 && parsed.data.PERPAY_HOST !== "localhost") {
     throw new Error("configuration validation failed: PERPAY_HOST must be an IP address or localhost");
+  }
+
+  const invoiceEnabled = parsed.data.PERPAY_TAX_INVOICE_ENABLED === "true";
+  const invoiceCredential = parsed.data.PERPAY_TAX_INVOICE_WECHAT_CREDENTIAL_ID;
+  const invoiceSigningKey = parsed.data.PERPAY_TAX_INVOICE_WECHAT_SIGNING_KEY_ID;
+  const invoiceProvider = parsed.data.PERPAY_TAX_INVOICE_PROVIDER;
+  const faPiaoCredentialFile = parsed.data.PERPAY_TAX_INVOICE_FAPIAO_CREDENTIAL_FILE;
+  if (invoiceProvider === "fa-piao" && !faPiaoCredentialFile) throw new Error("fa-piao invoicing requires PERPAY_TAX_INVOICE_FAPIAO_CREDENTIAL_FILE");
+  if (invoiceEnabled && invoiceProvider === "wechat" && (!invoiceCredential || !invoiceSigningKey)) {
+    throw new Error("tax invoicing requires separate WeChat service-provider credential and signing-key IDs");
   }
 
   const shadowOrigin = parsed.data.PERPAY_EPAY_SHADOW_IDENTITY_ORIGIN;
@@ -176,9 +197,14 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Deploy
     backupIntervalMilliseconds: parsed.data.PERPAY_BACKUP_INTERVAL_SECONDS * 1_000,
     merchantShadowMainOrders: parsed.data.PERPAY_EPAY_SHADOW_MAIN_ORDERS === "true",
     merchantShadowBalance: parsed.data.PERPAY_EPAY_SHADOW_BALANCE === "true",
+    ...(invoiceProvider === "fa-piao" && faPiaoCredentialFile
+      ? { taxInvoices: { provider: "fa-piao" as const, credentialFile: resolve(faPiaoCredentialFile), allowIssue: invoiceEnabled,
+        autoSync: invoiceEnabled && parsed.data.PERPAY_TAX_INVOICE_AUTO_SYNC_ENABLED === "true" } }
+      : invoiceEnabled && invoiceCredential && invoiceSigningKey ? { taxInvoices: { credentialId: invoiceCredential, signingKeyId: invoiceSigningKey, autoSync: parsed.data.PERPAY_TAX_INVOICE_AUTO_SYNC_ENABLED === "true" } } : {}),
     ...(shadowOrigin ? { merchantShadowIdentityOrigin: shadowOrigin } : {}),
     ...(gatewayMode === "off" ? {} : { epayGateway: {
       mode: gatewayMode, callbackDelivery: gatewayDelivery,
+      ...(parsed.data.PERPAY_EPAY_BALANCE_PAYMENTS_ENABLED === "true" ? { balancePaymentsEnabled: true } : {}),
       ...(parsed.data.PERPAY_EPAY_MAIN_BRIDGE_SECRET_FILE ? { mainBridgeSecretFile: parsed.data.PERPAY_EPAY_MAIN_BRIDGE_SECRET_FILE } : {}),
       ...(parsed.data.PERPAY_EPAY_INVOICE_FEE_CENTS === undefined ? {} : { invoiceFeeCents: parsed.data.PERPAY_EPAY_INVOICE_FEE_CENTS }),
       ...(parsed.data.PERPAY_EPAY_INVOICE_ENABLED === "true" ? { invoiceEnabled: true } : {}),

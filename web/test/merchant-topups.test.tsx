@@ -1,0 +1,22 @@
+import { MemoryRouter } from 'react-router';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { expect, it, vi } from 'vitest';
+import { MerchantTopups } from '../src/pages/merchant-topups';
+import { merchantRequest } from '../src/api/merchant-console';
+vi.mock('../src/api/merchant-console',async original=>({...await original<typeof import('../src/api/merchant-console')>(),merchantRequest:vi.fn()}));
+it('does not recharge on opening and preserves the original request when an insecure checkout link is rejected',async()=>{
+ const session={balance:{availableCents:20000,frozenCents:0},channels:['alipay_web'],canRecharge:true,csrfToken:'synthetic-topup-csrf'};
+ vi.mocked(merchantRequest).mockImplementation(async(path,_params,_signal,mutation)=>mutation?{checkoutUrl:window.location.origin+'/pay/epay/main/checkout/synthetic',order:{amountCents:10000,status:'pending_payment'}}:path==='topups'?{topups:[]}:session);
+ render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter><MerchantTopups merchantId='main-1'/></MemoryRouter></QueryClientProvider>);
+ const create=await screen.findByRole('button',{name:'创建充值订单'});
+ expect(vi.mocked(merchantRequest).mock.calls.some(call=>call[3])).toBe(false);
+ fireEvent.click(create);
+ await waitFor(()=>expect(vi.mocked(merchantRequest).mock.calls.some(call=>call[3])).toBe(true));
+ expect(vi.mocked(merchantRequest).mock.calls.find(call=>call[3])![3]!.body).toMatchObject({amount:'100.00',channel:'alipay_web'});
+ expect(await screen.findByRole('alert')).toHaveTextContent('充值链接未通过校验');
+ const first=vi.mocked(merchantRequest).mock.calls.find(call=>call[3])![3]!.body;
+ fireEvent.click(screen.getByRole('button',{name:'核对原充值请求'}));
+ await waitFor(()=>expect(vi.mocked(merchantRequest).mock.calls.filter(call=>call[3])).toHaveLength(2));
+ expect(vi.mocked(merchantRequest).mock.calls.filter(call=>call[3])[1]![3]!.body).toEqual(first);
+});

@@ -9,6 +9,17 @@ import { loadConfig } from "../src/config.ts";
 
 const MASTER_KEY = "0123456789abcdef".repeat(4);
 
+it("keeps tax invoicing disabled by default and requires explicit service-provider credential IDs", () => {
+  assert.equal(loadConfig({ PERPAY_MASTER_KEY: MASTER_KEY }).taxInvoices, undefined);
+  assert.throws(() => loadConfig({ PERPAY_MASTER_KEY: MASTER_KEY, PERPAY_TAX_INVOICE_ENABLED: "true" }), /service-provider credential/);
+  const configured = loadConfig({ PERPAY_MASTER_KEY: MASTER_KEY, PERPAY_TAX_INVOICE_ENABLED: "true",
+    PERPAY_TAX_INVOICE_WECHAT_CREDENTIAL_ID: "invoice-provider", PERPAY_TAX_INVOICE_WECHAT_SIGNING_KEY_ID: "invoice-signing" });
+  assert.deepEqual(configured.taxInvoices, { credentialId: "invoice-provider", signingKeyId: "invoice-signing", autoSync: true });
+  assert.equal(loadConfig({ PERPAY_MASTER_KEY: MASTER_KEY, PERPAY_TAX_INVOICE_ENABLED: "true",
+    PERPAY_TAX_INVOICE_AUTO_SYNC_ENABLED: "false", PERPAY_TAX_INVOICE_WECHAT_CREDENTIAL_ID: "invoice-provider",
+    PERPAY_TAX_INVOICE_WECHAT_SIGNING_KEY_ID: "invoice-signing" }).taxInvoices?.autoSync, false);
+});
+
 describe("deployment configuration", () => {
   it("loads the minimal deployment configuration with port 6190 defaults", () => {
     const config = loadConfig({ PERPAY_MASTER_KEY: MASTER_KEY });

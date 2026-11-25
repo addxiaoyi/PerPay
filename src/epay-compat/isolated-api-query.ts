@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { DatabaseSync } from "node:sqlite";
 import type { AppDatabase } from "../database/database.ts";
 import { RuntimeSecretCipher } from "../settings/crypto.ts";
-import { readEPayParams } from "./shadow-gateway.ts";
+import { readEPayQueryParams } from "./shadow-gateway.ts";
 import { expirationMinutes, orderAcceptsPayment } from "./order-expiration.ts";
 import { PublicCheckoutRateLimiter } from "../http/public-checkout-rate-limit.ts";
 import { orderReadSource } from "./order-read-source.ts";
@@ -70,7 +70,7 @@ export function createIsolatedEPayQuery(options: { database: Database & Partial<
       return context.json({ code: -1, msg: "请求过于频繁，请稍后再试" }, 429);
     }
     try {
-      const params = await readEPayParams(context.req.raw);
+      const params = await readEPayQueryParams(context.req.raw);
       if (["refund", "notify"].includes(params.act ?? "")) {
         if (!options.allowActions?.() || !options.database.write) return context.json({ code: -1, msg: "当前暂不处理退款或通知操作。" }, 503);
         const action = options.database.write(sql => {

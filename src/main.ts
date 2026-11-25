@@ -7,6 +7,8 @@ import { loadConfig } from "./config.ts";
 import { AppDatabase } from "./database/database.ts";
 import { createApp } from "./http/app.ts";
 import { createEPayRuntime } from "./epay-compat/gateway-runtime.ts";
+import { createInvoiceRuntime } from "./invoices/runtime.ts";
+import { InvoiceQueryScheduler } from "./invoices/scheduler.ts";
 import { IdentityService } from "./identity/service.ts";
 import { hardenProcessFileCreation } from "./infrastructure/storage/permissions.ts";
 import { LedgerStore } from "./ledger/index.ts";
@@ -67,16 +69,31 @@ settings = new RuntimeSettingsService({
 });
 
 let epayGateway: ReturnType<typeof createEPayRuntime> | undefined;
+let invoiceProvider: ReturnType<typeof createInvoiceRuntime> | undefined;
+let invoiceQueries: InvoiceQueryScheduler | undefined;
+let feeInvoiceScheduler: import("./invoices/fee-scheduler.ts").FeeInvoiceScheduler | undefined;
 try {
   await identity.initialize();
+  if (config.taxInvoices) invoiceProvider = createInvoiceRuntime({ database, masterKey: config.masterKey, ...config.taxInvoices });
   const snapshot = settings.initialize();
   await runtime.start(settingsStore.siteStore() ? settingsStore.instanceSnapshot() : snapshot);
   if (config.epayGateway) {
-    epayGateway = createEPayRuntime({ database, masterKey: config.masterKey, config: config.epayGateway, identityOrigin: config.merchantShadowIdentityOrigin, publicOrigin: config.publicOrigin, basePath: config.basePath, onError: event => console.error(JSON.stringify({ level: "error", event })) });
-    await epayGateway.start();
+    epayGateway = createEPayRuntime({ database, masterKey: config.masterKey, config: config.epayGateway, identityOrigin: config.merchantShadowIdentityOrigin, publicOrigin: config.publicOrigin, basePath: config.basePath, ...(invoiceProvider ? { invoiceProvider } : {}), onError: event => console.error(JSON.stringify({ level: "error", event })) });
+  }
+  if (invoiceProvider && config.taxInvoices?.autoSync) {
+    invoiceQueries = new InvoiceQueryScheduler({ database, query: (request, signal) => invoiceProvider!.query(request, signal),
+      onError: event => console.error(JSON.stringify({ level: "error", event })) });
+    void invoiceQueries.start().catch(error => logError("invoice_query_start_failed", error));
+    if (invoiceProvider.platformFees) {
+      const { createFeeInvoiceService } = await import("./invoices/fee-service.ts");
+      const { FeeInvoiceScheduler } = await import("./invoices/fee-scheduler.ts");
+      feeInvoiceScheduler = new FeeInvoiceScheduler(createFeeInvoiceService({ database, provider: invoiceProvider,
+        canIssue: () => config.epayGateway?.mode === "live" }), event => logError(event, new Error(event)));
+      void feeInvoiceScheduler.start().catch(error => logError("fee_invoice_start_failed", error));
+    }
   }
 } catch (error) {
-  await Promise.allSettled([runtime.stop(), epayGateway?.close()]);
+  await Promise.allSettled([runtime.stop(), epayGateway?.close(), invoiceQueries?.stop(), feeInvoiceScheduler?.stop()]);
   database.close();
   throw error;
 }
@@ -85,6 +102,7 @@ const app = createApp({
   config,
   database,
   ...(epayGateway ? { epayGateway } : {}),
+  ...(invoiceProvider ? { invoiceProvider } : {}),
   ...(config.merchantShadowIdentityOrigin ? { merchantWorkspace: { identityOrigin: config.merchantShadowIdentityOrigin, includeMainOrders: config.merchantShadowMainOrders, includeShadowBalance: config.merchantShadowBalance } } : {}),
   identity,
   onSetupToken: (token) => {
@@ -130,6 +148,8 @@ const server = serve(
     port: config.port,
   },
   (info) => {
+    // Receive channel callbacks before draining a potentially slow recovery backlog.
+    void epayGateway?.start().catch(error => logError("epay_recovery_start_failed", error));
     console.log(JSON.stringify({
       level: "info",
       event: "server_started",
@@ -185,7 +205,7 @@ function shutdown(signal: NodeJS.Signals): void {
 }
 
 async function stopRuntimes(): Promise<void> {
-  const stopped = await Promise.allSettled([runtime.stop(), epayGateway?.close()]);
+  const stopped = await Promise.allSettled([feeInvoiceScheduler?.stop(), invoiceQueries?.stop(), runtime.stop(), epayGateway?.close()]);
   for (const outcome of stopped) if (outcome.status === "rejected") {
     logError("runtime_shutdown_failed", outcome.reason);
     process.exitCode = 1;

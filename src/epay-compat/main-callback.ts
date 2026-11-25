@@ -7,14 +7,16 @@ import type { ConfirmedOrder } from "./confirmed-order.ts";
 import { assertCallbackQueryIsUnambiguous } from "./notification.ts";
 import { epaySign } from "./sign.ts";
 import { parseStrictJson } from "../http/strict-json.ts";
+import { hasBalanceConfirmationTable } from "./balance-payment-audit.ts";
 
 const money = (cents: number) => `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, "0")}`;
 export function readMainCallback(sql: DatabaseSync, cipher: RuntimeSecretCipher, order: ConfirmedOrder) {
   const contract = readMainOrderContract(sql, cipher, order.trade_no, Number(order.merchant_id));
   if (!contract) return null;
+  const balanceFee = hasBalanceConfirmationTable(sql) ? ",(SELECT fee_cents FROM epay_balance_confirmations WHERE trade_no=o.trade_no)" : "";
   const paid = sql.prepare(`SELECT api_trade_no,paid_at,money_cents,real_money_cents,
     COALESCE((SELECT fee_cents FROM epay_alipay_confirmations WHERE trade_no=o.trade_no),
-             (SELECT fee_cents FROM epay_wechat_confirmations WHERE trade_no=o.trade_no)) AS fee_cents
+             (SELECT fee_cents FROM epay_wechat_confirmations WHERE trade_no=o.trade_no)${balanceFee}) AS fee_cents
     FROM epay_orders o WHERE trade_no=? AND merchant_id=? AND status='PAID'`).get(order.trade_no, order.merchant_id);
   const amount = Number(paid?.money_cents), fee = Number(paid?.fee_cents), paidAt = Number(paid?.paid_at);
   if (!paid || !paid.api_trade_no || paid.paid_at === null || paid.fee_cents === null || !Number.isSafeInteger(amount) || amount < 1 || Number(paid.real_money_cents) !== amount || !Number.isSafeInteger(fee) || fee < 0 || fee > amount || !Number.isSafeInteger(paidAt) || paidAt < 0) throw new Error("main callback payment evidence is incomplete");

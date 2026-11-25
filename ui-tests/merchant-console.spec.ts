@@ -36,6 +36,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 
           : path === "ledger-entries" ? { merchantId, entries: [{ id: "ledger-1", type: "manual_adjustment", availableDeltaCents: -100, frozenDeltaCents: 0, occurredAt: 1800000000000 }], hasNext: false }
           : path === "ledger-adjustments" ? { merchantId, adjustments: [{ id: "ledger-1", type: "manual_adjustment", availableDeltaCents: -100, frozenDeltaCents: 0, occurredAt: 1800000000000, actorId: "管理员测试账户", reason: "商户申请提现" }], hasNext: false }
           : path === "invoices" ? { merchantId, invoices: [{ id: "invoice-1", tradeNo: "order-1", title: "星光社区技术服务发票", amountCents: 5000, status: "ISSUED", createdAt: 1800000000000 }], applications: [], invoicesHaveNext: false, applicationsHaveNext: false }
+          : path === "tax-invoices/session" ? { merchantId, enabled: false, providerConfigured: false, canConfigure: false, canRequest: false, csrfToken: null, profile: null }
+          : path === "tax-invoices" ? { merchantId, invoices: [], hasNext: false }
           : path === "notifications" ? { tradeNo: "order-1", notifications: [{ id: 1, status: "SUCCESS", createdAt: 1800000000000 }], hasNext: false }
           : path === "callbacks/session" ? { enabled: true, csrfToken: "retry-token" }
           : path === "callbacks/retry" ? { queued: true }
@@ -77,7 +79,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 
       await expect(page.getByText("操作人：管理员测试账户", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "发票", exact: true }).click();
       await expect(page.getByText("星光社区技术服务发票")).toBeVisible();
-      await expect(page.getByText("暂不受理新的开票申请，历史发票和申请记录继续保留。")).toBeVisible();
+      await expect(page.getByText("此前保存的发票及申请记录。新的客户开票申请请使用上方入口。")).toBeVisible();
+      await expect(page.getByText("平台开票服务尚未配置，请联系管理员完成服务商接入。")).toBeVisible();
+      await expect(page.getByRole("button", { name: "提交开票申请", exact: true })).toHaveCount(0);
       await page.getByRole("button", { name: "退款", exact: true }).click();
       await expect(page.getByText("渠道处理中", { exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "批准原路退款", exact: true })).toHaveCount(0);
@@ -415,6 +419,12 @@ async function openEditableConsole(page: import("@playwright/test").Page) {
         data = { merchantId: "main-1", availableCents: state.availableCents, frozenCents: 0, migrationBaselineVerified: true, version: state.balanceVersion };
       } else if (path === "combined-orders") {
         data = { merchantId: "main-1", orders: [], hasNext: false };
+      } else if (path === "tax-invoices/session") {
+        data = { merchantId: "main-1", enabled: true, providerConfigured: false, canConfigure: state.role === "admin", canRequest: false, csrfToken: state.role === "member" ? null : "invoice-fixture-token", profile: null };
+      } else if (path === "tax-invoices") {
+        data = { merchantId: "main-1", invoices: [], hasNext: false };
+      } else if (path === "invoices") {
+        data = { merchantId: "main-1", invoices: [], applications: [], invoicesHaveNext: false, applicationsHaveNext: false };
       } else if (path === "ledger-entries") {
         data = { merchantId: "main-1", entries: state.balanceWrites.slice(0, state.balanceVersion).map(write => ({ id: write.requestId, type: "manual_adjustment", availableDeltaCents: write.deltaCents, frozenDeltaCents: 0, occurredAt: 1_800_000_000_000 })), hasNext: false };
       } else if (path === "ledger-adjustments") {

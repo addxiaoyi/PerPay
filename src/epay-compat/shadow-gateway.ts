@@ -35,14 +35,35 @@ function orderFingerprint(order: EPayOrderRequest): string {
   return JSON.stringify([order.merchantId, order.merchantOrderNo, order.amountCents, order.name, order.type, order.notifyUrl, order.returnUrl, order.param, order.device, order.openid]);
 }
 
-export async function readEPayParams(request: Request): Promise<Record<string, string>> {
+export function readEPayParams(request: Request): Promise<Record<string, string>> {
+  return readParams(request, false);
+}
+
+// Legacy query clients repeat credentials in the URL and form for PHP compatibility.
+export function readEPayQueryParams(request: Request): Promise<Record<string, string>> {
+  return readParams(request, true);
+}
+
+async function readParams(request: Request, allowMatchingQuery: boolean): Promise<Record<string, string>> {
   if (request.url.length > MAX_BODY_BYTES) throw new Error("request target too large");
   const query = new URL(request.url).searchParams;
-  if (request.method !== "GET" && [...query].length) throw new Error("query parameters are not allowed with a request body");
-  if ([...query].length) return uniqueParams(query);
-  if (request.method === "GET") return {};
+  const hasQuery = [...query].length > 0;
+  if (request.method !== "GET" && hasQuery && !allowMatchingQuery) throw new Error("query parameters are not allowed with a request body");
+  const queryParams = hasQuery ? uniqueParams(query) : null;
+  if (request.method === "GET") return queryParams ?? {};
   const bytes = await readBody(request);
+  if (queryParams && bytes.byteLength === 0) return queryParams;
   const contentType = (request.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase();
+  const bodyParams = readBodyParams(bytes, contentType);
+  if (!queryParams) return bodyParams;
+  for (const [key, value] of Object.entries(bodyParams)) {
+    if (Object.hasOwn(queryParams, key) && queryParams[key] !== value) throw new Error("conflicting query and body parameter");
+    queryParams[key] = value;
+  }
+  return queryParams;
+}
+
+function readBodyParams(bytes: Uint8Array, contentType: string | undefined): Record<string, string> {
   if (contentType === "application/json") {
     const body = parseStrictJson(bytes);
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("invalid JSON body");

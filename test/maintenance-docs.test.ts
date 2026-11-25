@@ -88,10 +88,15 @@ describe("maintenance documentation version contract", () => {
     assert.ok(current.includes(APP_VERSION));
     assert.ok(current.includes(`(v${APP_VERSION}.md)`));
     assert.ok(maintenance.includes("当前源码版本为 `" + APP_VERSION + "`"));
-    assert.ok(notes.includes(`ghcr.io/mashiro0619/perpay:${APP_VERSION}`));
+    const image = /ghcr\.io\/([a-z0-9_.-]+)\/([a-z0-9_.-]+):([^`\s]+)/.exec(notes);
+    assert.ok(image, "release notes must identify the intended fixed-version image");
+    assert.equal(image[3], APP_VERSION);
     // Compatibility details live in the maintenance guide linked by release notes.
     // The migration catalog and supported range are checked below.
-    assert.ok(notes.includes(`https://github.com/Mashiro0619/PerPay/blob/v${APP_VERSION}/docs/maintenance.md#固定版本与回滚`));
+    const recovery = /https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/blob\/v([^/]+)\/docs\/maintenance\.md#固定版本与回滚/.exec(notes);
+    assert.ok(recovery, "release notes must link the matching fixed-version recovery guide");
+    assert.equal(`${recovery[1]}/${recovery[2]}`.toLowerCase(), `${image[1]}/${image[2]}`);
+    assert.equal(recovery[3], APP_VERSION);
     assert.doesNotMatch(notes, /\]\(\.\.?\//, "GitHub Release notes must not contain relative document links");
     assert.ok(notes.includes("PERPAY_MASTER_KEY"));
     assert.ok(maintenance.includes("docker compose stop app backup"));

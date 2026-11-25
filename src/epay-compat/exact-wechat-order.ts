@@ -42,7 +42,7 @@ function matchesExisting(stored: ExistingOrder, order: EPayOrderRequest, request
 
 // Credential selection is an internal routing decision, never an EPay request parameter.
 // This persists an exact-amount intent only; it does not contact a payment provider.
-export function createExactWechatOrder(database: Pick<AppDatabase, "write" | "instanceId">, masterKey: Uint8Array, params: Readonly<Record<string, string>>, mode: "page" | "api", credentialId: string, now: number) {
+export function createExactWechatOrder(database: Pick<AppDatabase, "write" | "instanceId">, masterKey: Uint8Array, params: Readonly<Record<string, string>>, mode: "page" | "api", credentialId: string, now: number, topup = false) {
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(credentialId) || !Number.isSafeInteger(now) || now < 0) throw new Error("invalid exact order configuration");
   const cipher = new RuntimeSecretCipher(masterKey, database.instanceId());
   return withAuthenticatedOrder(database, masterKey, params, mode, (db, order) => {
@@ -75,7 +75,7 @@ export function createExactWechatOrder(database: Pick<AppDatabase, "write" | "in
       WHERE c.credential_id=? AND b.client_id=? AND s.merchant_id=? AND c.valid_from<=? AND c.valid_until>? AND c.created_at<=? AND r.credential_id IS NULL`).get(credentialId, order.siteClientId, order.merchantId, now, now, now) as StoredCredential | undefined;
     if (!credential) throw new Error("WeChat channel is unavailable for this site");
     validateWechatNativeFields({ appId: credential.app_id, providerMerchantId: credential.provider_merchant_id, name: order.name });
-    const feeRate = Number(credential.fee_rate_bps);
+    const feeRate = topup ? 0 : Number(credential.fee_rate_bps);
     const fee = feeFor(order.amountCents, feeRate);
     // Keep the provider-facing order number within the WeChat 32-character limit.
     const tradeNo = randomUUID().replaceAll("-", "");

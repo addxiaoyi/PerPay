@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { merchantRequest, centsText, dateText, paymentLabel } from "@/api/merchant-console";
 import { ConsolePagination, ConsoleQuery } from "@/components/merchant-console-state";
@@ -15,7 +15,11 @@ const sources: Record<string, string> = { epay: "支付网关", main_site: "主�
 const states = { orders: ["pending", "pending_payment", "paid", "closed", "partial_refund", "refund_processing", "refunded", "frozen"], notifications: ["pending", "leased", "success", "succeeded", "failed"], ledger: ["posted"], refunds: ["requested", "ready", "processing", "unknown", "succeeded", "rejected", "closed"], settlements: ["pending", "paid", "rejected"] };
 export function PortalRecordsPage({ kind, scoped = false, onlySource }: { kind: keyof typeof titles; scoped?: boolean; onlySource?: string }) {
   const portal = usePortal(), params = portalParams(portal, scoped), global = params.scope === "admin";
-  const [draft, setDraft] = useState(""), [filters, setFilters] = useState({ page: 1, search: "", status: "", source: onlySource ?? "", targetMerchantId: "" });
+  const [searchParams] = useSearchParams();
+  const [draft, setDraft] = useState(""), [filters, setFilters] = useState(() => ({
+    page: 1, search: "", status: kind === "notifications" && searchParams.get("status") === "failed" ? "failed" : "",
+    source: onlySource ?? "", targetMerchantId: "",
+  }));
   const [callback, setCallback] = useState<{ merchantId: string; tradeNo: string } | null>(null);
   const records = useQuery({ queryKey: ["merchant-console", params.merchantId, "portal-records", params.scope, kind, filters], queryFn: ({ signal }) => merchantRequest<{ records: PortalRecord[]; total: number; hasNext: boolean }>(`portal/${kind}`, { ...params, page: String(filters.page), search: filters.search, status: filters.status, source: filters.source, ...(global ? { targetMerchantId: filters.targetMerchantId } : {}) }, signal), retry: false });
   function search(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setCallback(null); setFilters(value => ({ ...value, page: 1, search: draft.trim() })); }

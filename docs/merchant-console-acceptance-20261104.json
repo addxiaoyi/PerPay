@@ -1,0 +1,16 @@
+{
+  "verifiedAt": "2026-11-04T15:22:39Z",
+  "codeRoot": "/opt/perpay-candidate-20261104f/app",
+  "authentication": "existing main-site administrator browser session",
+  "checks": {
+    "merchants": 4,
+    "legacyBalanceHttp200": 4,
+    "candidateCombinedBalanceHttp200": 4,
+    "availableBalanceMatches": 4,
+    "frozenBalanceMatches": 4,
+    "candidateHealth": "healthy"
+  },
+  "financiallyReconciled": false,
+  "productionCutover": false,
+  "scope": "Separate read-only HTTP requests; confirms displayed balances, not provider settlement or a shared final cutoff."
+}

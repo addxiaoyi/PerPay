@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: MIT -->
 
-The current source candidate is `1.0.0-rc.12` ([release notes](v1.0.0-rc.12.md)).
+The current source candidate is `1.0.0-rc.25` ([release notes](v1.0.0-rc.25.md)).
 
 # PerPay 未发布改动
 

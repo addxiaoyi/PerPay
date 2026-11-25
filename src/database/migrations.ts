@@ -25,6 +25,10 @@ import { EPAY_MAIN_DELTA_SCHEMA_SQL } from "../epay-compat/main-delta-schema.ts"
 import { EPAY_LEGACY_DELTA_SCHEMA_SQL } from "../epay-compat/legacy-delta-schema.ts";
 import { MAIN_NATIVE_ORDER_SCHEMA } from "../epay-compat/main-native-schema.ts";
 import { MAIN_ORDER_ACCESS_SCHEMA } from "../epay-compat/main-order-access.ts";
+import { FA_PIAO_SCHEMA_SQL, INVOICE_RECONCILIATION_SCHEMA_SQL, TAX_INVOICE_SCHEMA_SQL } from "../invoices/schema.ts";
+import { FEE_INVOICE_SCHEMA_SQL } from "../invoices/fee-schema.ts";
+import { BALANCE_PAYMENT_SCHEMA_SQL } from "../epay-compat/balance-payment-schema.ts";
+import { TOPUP_SCHEMA_SQL } from "../epay-compat/topup-schema.ts";
 import { createHash } from "node:crypto";
 
 export interface Migration {
@@ -5226,4 +5230,10 @@ export const migrations: readonly Migration[] = [
   { version: 66, name: "epay_callback_manual_retries", sql: EPAY_CALLBACK_RETRY_SCHEMA_SQL },
   { version: 67, name: "epay_merchant_payout_accounts_and_queue", sql: EPAY_PAYOUT_SCHEMA_SQL },
   { version: 68, name: "epay_payout_authorization_returns_and_reconciliation", sql: EPAY_PAYOUT_RECOVERY_SCHEMA_SQL },
+  { version: 69, name: "epay_merchant_tax_invoices", sql: TAX_INVOICE_SCHEMA_SQL },
+  { version: 70, name: "epay_fa_piao_invoices", sql: FA_PIAO_SCHEMA_SQL },
+  { version: 71, name: "epay_invoice_receipt_uniqueness", sql: INVOICE_RECONCILIATION_SCHEMA_SQL },
+  { version: 72, name: "epay_platform_fee_invoices", sql: FEE_INVOICE_SCHEMA_SQL },
+  { version: 73, name: "epay_balance_payments_and_invoice_subscriptions", sql: BALANCE_PAYMENT_SCHEMA_SQL },
+  { version: 74, name: "epay_merchant_balance_topups", sql: TOPUP_SCHEMA_SQL },
 ] as const;

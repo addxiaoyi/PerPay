@@ -101,6 +101,39 @@ it("rejects stale leases and never creates payment records by itself", async () 
   } finally { fixture.close(); }
 });
 
+it("keeps healthy orders recoverable when another query state is malformed", async () => {
+  const fixture = await buildFixture();
+  const errors: string[] = [], queried: string[] = [];
+  try {
+    fixture.db.write(sql => sql.prepare("INSERT INTO system_metadata(key,value,updated_at) VALUES('epay_payment_query:query-a','{broken',100)").run());
+    const scheduler = new EPayPaymentQueryScheduler({ database:fixture.db, clock:()=>10_000, intervalMilliseconds:1_000, maximumPerRun:5,
+      onError:code=>errors.push(code), query:{alipay:async tradeNo=>{queried.push(tradeNo);return {paymentConfirmed:false};},
+      wxpay:async tradeNo=>{queried.push(tradeNo);return {paymentConfirmed:false};}} });
+    try { assert.equal(await scheduler.trigger(),1); } finally { await scheduler.stop(); }
+    assert.deepEqual(queried,["query-w"]);
+    assert.ok(errors.includes("epay_payment_query_state_invalid"));
+    assert.equal(fixture.db.read(sql=>auditPaymentQueries(sql,10_000)).invalid,1);
+    assert.equal(Number(fixture.db.read(sql=>sql.prepare("SELECT count(*) n FROM epay_balance_ledger").get()?.n)),0);
+  } finally { fixture.close(); }
+});
+
+it("queries another provider while one response is delayed, with bounded concurrency", async () => {
+  const fixture = await buildFixture();
+  let release!:()=>void;
+  const pending=new Promise<void>(resolve=>{release=resolve;});
+  const started:string[]=[];
+  const scheduler=new EPayPaymentQueryScheduler({database:fixture.db,clock:()=>10_000,intervalMilliseconds:1_000,maximumPerRun:5,maximumConcurrency:2,
+    onError:()=>assert.fail("unexpected error"),query:{alipay:async tradeNo=>{started.push(tradeNo);await pending;return {paymentConfirmed:false};},
+    wxpay:async tradeNo=>{started.push(tradeNo);return {paymentConfirmed:false};}}});
+  try {
+    const run=scheduler.trigger();
+    await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.deepEqual(started,["query-a","query-w"]);
+    release();
+    assert.equal(await run,2);
+  } finally { release();await scheduler.stop();fixture.close(); }
+});
+
 it("coalesces concurrent triggers and drains the current request before stop completes", async () => {
   const fixture = await buildFixture();
   let finish!: (outcome: { paymentConfirmed: boolean }) => void;

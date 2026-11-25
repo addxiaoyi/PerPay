@@ -39,7 +39,15 @@ export async function merchantRequest<T>(path: string, params: Record<string, st
     credentials: "same-origin", cache: "no-store", redirect: "error", ...(signal ? { signal } : {}),
     ...(mutation ? { method: "POST", headers: { "content-type": "application/json", "x-csrf-token": mutation.token }, body: JSON.stringify(mutation.body) } : {}),
   });
-  const body = await response.json() as { ok?: boolean; data?: T; error?: string; code?: string };
+  let body: { ok?: boolean; data?: T; error?: string; code?: string } | null;
+  try {
+    body = await response.json();
+  } catch (error) {
+    signal?.throwIfAborted();
+    if (response.ok) throw error;
+    throw new MerchantConsoleError(response.status, "invalid_response");
+  }
+  if (!body) throw new MerchantConsoleError(response.status, "invalid_response");
   if (!response.ok || body.ok !== true || !body.data) {
     const failure = new MerchantConsoleError(response.status, body.code ?? body.error ?? "invalid_response");
     if (body.code && financialErrors[body.code]) failure.message = financialErrors[body.code]!;

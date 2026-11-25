@@ -3,6 +3,8 @@ import { PortalShell, portalMode } from "./shell";
 import { PortalOverviewPage } from "./overview";
 import { PortalRecordsPage } from "./records";
 import { PortalMerchantsPage, PortalOperationPage, PortalSystemPage } from "./pages";
+import { PortalWiki } from "./wiki-page";
+import { MerchantBalanceCheckout } from "@/pages/merchant-balance-checkout";
 
 function LegacyWorkspace() {
   const [query] = useSearchParams();
@@ -17,6 +19,8 @@ export function portalRoutes() {
     <Route path="notifications" element={<PortalRecordsPage kind="notifications" />} />
     <Route path="ledger" element={<PortalRecordsPage kind="ledger" />} />
     <Route path="tasks" element={<PortalOverviewPage tasksOnly />} />
+    <Route path="balance-pay" element={<MerchantBalanceCheckout />} />
+    <Route path="docs" element={<PortalWiki />} />
     {admin ? <>
       <Route path="merchants" element={<PortalMerchantsPage />} />
       <Route path="system" element={<PortalSystemPage />} />
@@ -26,8 +30,8 @@ export function portalRoutes() {
       <Route path="merchant-workspace" element={<LegacyWorkspace />} />
       <Route path="merchants/:merchantId/overview" element={<PortalOverviewPage scoped />} />
       { ["orders", "notifications", "ledger"].map(kind => <Route key={kind} path={`merchants/:merchantId/${kind}`} element={<PortalRecordsPage kind={kind as "orders" | "notifications" | "ledger"} scoped />} />) }
-      { ["adjustments", "fee", "refunds", "settlements", "payouts", "invoices", "keys", "profile", "members"].map(section => <Route key={section} path={`merchants/:merchantId/${section}`} element={<PortalOperationPage section={section} />} />) }
-    </> : ["collect", "refunds", "settlements", "invoices", "fee", "payouts", "keys", "profile"].map(section => <Route key={section} path={section} element={<PortalOperationPage section={section} />} />)}
+      { ["adjustments", "fee", "refunds", "settlements", "payouts", "topups", "invoices", "keys", "profile", "members"].map(section => <Route key={section} path={`merchants/:merchantId/${section}`} element={<PortalOperationPage section={section} />} />) }
+    </> : ["collect", "topups", "refunds", "settlements", "invoices", "fee", "payouts", "keys", "profile"].map(section => <Route key={section} path={section} element={<PortalOperationPage section={section} />} />)}
     <Route path="*" element={<div role="alert" className="rounded-xl border p-8">页面不存在，请使用侧栏进入所需功能。</div>} />
   </Route>);
 }

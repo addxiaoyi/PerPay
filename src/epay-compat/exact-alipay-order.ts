@@ -12,7 +12,7 @@ export function exactAlipayFingerprint(order: EPayOrderRequest): string {
 }
 
 // Order identity, fee and channel binding are fixed in one transaction.
-export function createExactAlipayOrder(database: Pick<AppDatabase, "write" | "instanceId">, masterKey: Uint8Array, params: Readonly<Record<string, string>>, mode: "page" | "api", now: number, product: "qr" | "web" = "qr") {
+export function createExactAlipayOrder(database: Pick<AppDatabase, "write" | "instanceId">, masterKey: Uint8Array, params: Readonly<Record<string, string>>, mode: "page" | "api", now: number, product: "qr" | "web" = "qr", topup = false) {
   if (!Number.isSafeInteger(now) || now < 0) throw new Error("invalid order time");
   return withAuthenticatedOrder(database, masterKey, params, mode, (db, order) => {
     const deviceSupported = order.device === "pc" || product === "web" && order.device === "mobile";
@@ -45,7 +45,7 @@ export function createExactAlipayOrder(database: Pick<AppDatabase, "write" | "in
       JOIN epay_site_bindings s ON s.client_id=b.client_id JOIN epay_merchant_accounts m ON m.merchant_id=s.merchant_id AND m.enabled=1
       WHERE b.client_id=? AND m.merchant_id=?`).get(order.siteClientId, order.merchantId) as { app_id: string; seller_id: string; platform_public_key: string; fee_rate_bps: number | bigint } | undefined;
     if (!binding) throw new Error("Alipay channel unavailable");
-    const rate = Number(binding.fee_rate_bps);
+    const rate = topup ? 0 : Number(binding.fee_rate_bps);
     if (!Number.isSafeInteger(rate) || rate < 0 || rate > 5000) throw new Error("invalid merchant fee");
     const tradeNo = randomUUID().replaceAll("-", "");
     validateAlipayPrecreateOrder({ tradeNo, amountCents: order.amountCents, subject: order.name });

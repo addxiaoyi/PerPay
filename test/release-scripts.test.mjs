@@ -178,7 +178,7 @@ test("render-release-compose follows the package version channel without changin
 test("the application image contains only the pinned Node runtime and application", () => {
   assert.match(
     dockerfileText,
-    /node:24\.22\.1-alpine3\.24@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53/u,
+    /node:24\.22\.3-alpine3\.24@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5/u,
   );
   assert.doesNotMatch(dockerfileText, /GO_IMAGE|RESTIC|golang|--from=restic|third_party/iu);
   assert.match(dockerfileText, /org\.opencontainers\.image\.licenses="MIT"/u);
@@ -211,8 +211,9 @@ test("release builds, scans, verifies, and publishes fixed and latest images", (
   assert.match(gates?.run ?? "", /npm run api:check/u);
   assert.match(gates?.run ?? "", /npm run typecheck/u);
   assert.match(gates?.run ?? "", /npm test/u);
+  assert.equal(verifySteps.find(step => step.name === 'Run Python operations safety checks')?.run, 'npm run test:operations');
   assert.match(gates?.run ?? "", /npm run build/u);
-  assert.match(gates?.run ?? "", /npm audit --audit-level=high/u);
+  assert.match(gates?.run ?? "", /npm audit --audit-level=moderate --registry=https:\/\/registry\.npmjs\.org/u);
 
   const publishSteps = workflow.jobs.publish.steps;
   const builds = publishSteps.filter((step) => step.uses?.includes("docker/build-push-action@"));
@@ -265,6 +266,7 @@ test("release builds, scans, verifies, and publishes fixed and latest images", (
   assert.match(render?.run ?? "", /render-release-compose\.mjs/u);
   assert.match(render?.run ?? "", /config --quiet/u);
   assert.match(render?.run ?? "", /npm run demo:package/u);
+  assert.match(render?.run ?? "", /npm run operations:package/u);
   assert.match(render?.run ?? "", /cp dist\/demo\.zip release-assets\/demo\.zip/u);
   assert.match(render?.run ?? "", /--profile maintenance -f .*config --images/u);
 
@@ -299,6 +301,8 @@ test("release builds, scans, verifies, and publishes fixed and latest images", (
   assert.equal(publishSteps.indexOf(smoke) < publishSteps.indexOf(latest), true);
   assert.equal(publishSteps.indexOf(latest) < publishSteps.indexOf(publish), true);
   assert.match(publish?.run ?? "", /gh release create/u);
+  assert.match(publish?.run ?? "", /release-assets\/operations\.zip/u);
+  assert.match(publish?.run ?? "", /operations_sha256/u);
   assert.match(publish?.run ?? "", /release-assets\/docker-compose\.yml release-assets\/demo\.zip/u);
   assert.match(publish?.run ?? "", /docs\/releases\/\$\{GITHUB_REF_NAME\}\.md/u);
   assert.match(publish?.run ?? "", /--title "PerPay \$GITHUB_REF_NAME"/u);
@@ -340,10 +344,12 @@ test("daily CI keeps bounded Linux checks and a separate Chromium regression job
   assert.deepEqual(commands, [
     "npm ci --ignore-scripts",
     "npm run check",
+    "npm run test:operations",
+    "npm run test:starmc",
     "npm run test:permissions",
     "npm run test:payments",
     "npm run test:payouts",
-    "npm audit --audit-level=high",
+    "npm audit --audit-level=moderate --registry=https://registry.npmjs.org",
   ]);
   assert.doesNotMatch(ciWorkflowText, /windows|docker build|trivy|compose up/iu);
   assert.equal(workflow.jobs.ui["runs-on"], "ubuntu-24.04");

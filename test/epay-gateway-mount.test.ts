@@ -37,7 +37,7 @@ it("starts in maintenance without a provider or callback side effect and refuses
   const database = await AppDatabase.open(join(directory, "db.sqlite"), { masterKey });
   new RuntimeSettingsStore(database, masterKey).initialize();
   const options = { database, masterKey, publicOrigin: "https://gateway.example", basePath: "/pay", onError: () => assert.fail("scheduler must remain stopped") };
-  const runtime = createEPayRuntime({ ...options, config: { mode: "maintenance", callbackDelivery: false } });
+  const runtime = createEPayRuntime({ ...options, identityOrigin: "http://127.0.0.1:8787", config: { mode: "maintenance", callbackDelivery: false } });
   try {
     assert.equal(await runtime.start(), 0);
     const app = new Hono().basePath("/pay");
@@ -49,6 +49,9 @@ it("starts in maintenance without a provider or callback side effect and refuses
     assert.equal((await app.request("/pay/epay/alipay/notify", { method: "POST" })).status, 400);
     assert.equal((await app.request("/pay/api/merchant/orders", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status, 503);
     assert.equal((await app.request("/pay/epay/main/orders", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status, 503);
+    for (const operation of ["applications", "query", "files"]) {
+      assert.equal((await app.request(`/pay/epay/tax-invoices/${operation}`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status, 503);
+    }
     assert.equal((await app.request("/pay/epay/wechat/notify", { method: "POST" })).status, 400);
     assert.equal((await app.request("/pay/epay/internal/source-sync", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status, 403);
     assert.equal(runtime.health().state, "idle");

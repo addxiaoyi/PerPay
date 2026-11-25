@@ -2,10 +2,8 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { compareReleaseVersions, isStableReleaseVersion } from '../src/shared/release-version.ts';
+import { releaseTarget } from './release-target.mjs';
 
-const REPOSITORY = 'Mashiro0619/PerPay';
-const IMAGE = 'ghcr.io/mashiro0619/perpay';
-const REGISTRY = 'https://ghcr.io/v2/mashiro0619/perpay';
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
 const ACCEPT = 'application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json';
 const REQUIRED_STEPS = [
@@ -21,13 +19,13 @@ const REQUIRED_STEPS = [
 ];
 const digestOf = bytes => 'sha256:' + createHash('sha256').update(bytes).digest('hex');
 
-export function validateRecoverySource(run, jobs, version) {
+export function validateRecoverySource(run, jobs, version, repository) {
   assert.ok(isStableReleaseVersion(version), 'Only stable releases may recover latest');
   assert.equal(run.name, 'Release');
   assert.equal(run.path, '.github/workflows/release.yml');
   assert.equal(run.event, 'push');
   assert.equal(run.head_branch, 'v' + version);
-  assert.equal(run.repository.full_name, REPOSITORY);
+  assert.equal(releaseTarget(run.repository.full_name).repository, repository);
   assert.equal(run.status, 'completed');
   assert.equal(run.conclusion, 'failure');
   assert.match(run.head_sha, /^[a-f0-9]{40}$/);
@@ -47,7 +45,7 @@ export function validateRecoverySource(run, jobs, version) {
   return run.head_sha;
 }
 
-export function validatePreviousRelease(release, version, expectedDigest) {
+export function validatePreviousRelease(release, version, expectedDigest, image) {
   assert.ok(isStableReleaseVersion(version), 'Only stable releases may recover latest');
   assert.equal(release.draft, false);
   assert.equal(release.prerelease, false);
@@ -55,7 +53,7 @@ export function validatePreviousRelease(release, version, expectedDigest) {
   assert.equal(release.tag_name, 'v' + previous);
   assert.ok(isStableReleaseVersion(previous));
   assert.equal(compareReleaseVersions(previous, version), -1, 'Recovery cannot downgrade or replace the same release');
-  assert.ok(release.body.includes(IMAGE + ':' + previous + '@' + expectedDigest), 'Previous release does not attest the expected latest digest');
+  assert.ok(release.body.includes(image + ':' + previous + '@' + expectedDigest), 'Previous release does not attest the expected latest digest');
   return previous;
 }
 
@@ -65,8 +63,11 @@ export function validateIndex(index) {
   return index.manifests;
 }
 
-export async function recoverLatest(options, fetchImpl = fetch) {
+export async function recoverLatest(options, fetchImpl = fetch, environment = process.env) {
   const { version, sourceRunId, targetDigest, expectedLatestDigest, githubToken, actor } = options;
+  const trustedRepository = environment.GITHUB_REPOSITORY ?? options.repository;
+  const destination = releaseTarget(trustedRepository, options.repository ?? trustedRepository);
+  if (options.targetRepository !== undefined) releaseTarget(destination.repository, options.targetRepository);
   assert.ok(isStableReleaseVersion(version), 'Only stable releases may recover latest');
   assert.match(sourceRunId, /^[1-9][0-9]*$/);
   assert.match(targetDigest, DIGEST);
@@ -77,7 +78,7 @@ export async function recoverLatest(options, fetchImpl = fetch) {
     return fetchImpl(url, { redirect: 'error', signal: AbortSignal.timeout(45000), ...init });
   }
   async function github(path) {
-    const response = await request('https://api.github.com/repos/' + REPOSITORY + '/' + path, {
+    const response = await request('https://api.github.com/repos/' + destination.repository + '/' + path, {
       headers: { authorization: 'Bearer ' + githubToken, accept: 'application/vnd.github+json', 'user-agent': 'PerPay-release-recovery' },
     });
     assert.equal(response.status, 200, 'GitHub verification request failed: ' + path);
@@ -86,7 +87,7 @@ export async function recoverLatest(options, fetchImpl = fetch) {
   const run = await github('actions/runs/' + sourceRunId);
   const jobs = await github('actions/runs/' + sourceRunId + '/jobs?filter=latest&per_page=100');
   assert.equal(jobs.total_count, jobs.jobs.length);
-  const revision = validateRecoverySource(run, jobs.jobs, version);
+  const revision = validateRecoverySource(run, jobs.jobs, version, destination.repository);
   const tagRef = await github('git/ref/tags/v' + version);
   assert.equal(tagRef.ref, 'refs/tags/v' + version);
   assert.equal(tagRef.object.type, 'tag', 'A signed annotated release tag is required');
@@ -96,9 +97,9 @@ export async function recoverLatest(options, fetchImpl = fetch) {
   assert.ok(tag.message.includes('-----BEGIN SSH SIGNATURE-----'), 'The existing release tag must remain signed');
   assert.equal(tag.object.type, 'commit');
   assert.equal(tag.object.sha, revision);
-  const previous = validatePreviousRelease(await github('releases/latest'), version, expectedLatestDigest);
+  const previous = validatePreviousRelease(await github('releases/latest'), version, expectedLatestDigest, destination.image);
   async function token(write) {
-    const response = await request('https://ghcr.io/token?service=ghcr.io&scope=repository:mashiro0619/perpay:pull' + (write ? ',push' : ''), {
+    const response = await request('https://ghcr.io/token?service=ghcr.io&scope=repository:' + destination.repository + ':pull' + (write ? ',push' : ''), {
       headers: write ? { authorization: 'Basic ' + Buffer.from(actor + ':' + githubToken).toString('base64') } : {},
     });
     assert.equal(response.status, 200, 'Registry authentication failed');
@@ -109,7 +110,7 @@ export async function recoverLatest(options, fetchImpl = fetch) {
   const readToken = await token(false);
   async function registry(kind, reference, allowMissing = false) {
     // Only public blobs may follow CDN redirects; privileged requests never redirect.
-    const response = await request(REGISTRY + '/' + kind + '/' + reference, { redirect: kind === 'blobs' ? 'follow' : 'error', headers: { authorization: 'Bearer ' + readToken, accept: ACCEPT } });
+    const response = await request(destination.registry + '/' + kind + '/' + reference, { redirect: kind === 'blobs' ? 'follow' : 'error', headers: { authorization: 'Bearer ' + readToken, accept: ACCEPT } });
     if (allowMissing && response.status === 404) return null;
     assert.equal(response.status, 200, 'Registry verification failed: ' + reference);
     const bytes = Buffer.from(await response.arrayBuffer());
@@ -140,7 +141,7 @@ export async function recoverLatest(options, fetchImpl = fetch) {
   assert.equal((await registry('manifests', version)).digest, targetDigest);
   assert.equal((await registry('manifests', 'latest')).digest, expectedLatestDigest);
   // Write only latest, once; never rewrite either fixed version or repeat an uncertain write.
-  const response = await request(REGISTRY + '/manifests/latest', {
+  const response = await request(destination.registry + '/manifests/latest', {
     method: 'PUT',
     headers: { authorization: 'Bearer ' + writeToken, 'content-type': target.data.mediaType },
     body: target.bytes,
@@ -160,6 +161,8 @@ if (import.meta.main) {
       expectedLatestDigest: process.env.EXPECTED_LATEST_DIGEST,
       githubToken: process.env.GITHUB_TOKEN,
       actor: process.env.GITHUB_ACTOR,
+      repository: process.env.GITHUB_REPOSITORY,
+      targetRepository: process.env.PERPAY_RELEASE_REPOSITORY,
     });
     console.log('已将 latest 恢复为通过验收的固定版本：' + JSON.stringify(result));
   } catch (error) {

@@ -11,6 +11,8 @@ import { parseLegacyCents } from "./money.ts";
 import { epaySign } from "./sign.ts";
 import { issueMainOrderAccess } from "./main-order-access.ts";
 import { recordAlipayWebMode } from "./alipay-web.ts";
+import { readBalanceContract } from "./balance-order-contract.ts";
+import { isBalanceTopup } from "./topup-kind.ts";
 
 type Database = Pick<AppDatabase, "read" | "write" | "instanceId">;
 export type MainOrderIdentity = Readonly<{ merchantId: string; epayMerchantId: number; apiId: string; callbackUrl: string; callbackSecret: string }>;
@@ -34,7 +36,7 @@ function secretName(row: Pick<NativeRow, "trade_no" | "merchant_id" | "main_api_
 
 export function readMainOrderContract(sql: DatabaseSync, cipher: RuntimeSecretCipher, tradeNo: string, merchantId: number) {
   const row = sql.prepare("SELECT * FROM epay_main_native_orders WHERE trade_no=?").get(tradeNo) as NativeRow | undefined;
-  if (!row) return null;
+  if (!row) return readBalanceContract(sql, cipher, tradeNo, merchantId);
   if (Number(row.merchant_id) !== merchantId) throw new Error("main callback merchant differs");
   const plain = cipher.decrypt(secretName(row), 1, { cipherVersion: 1, nonce: Buffer.from(row.nonce), ciphertext: Buffer.from(row.ciphertext), authenticationTag: Buffer.from(row.authentication_tag) });
   try {
@@ -44,7 +46,7 @@ export function readMainOrderContract(sql: DatabaseSync, cipher: RuntimeSecretCi
 }
 
 // The callback contract must commit before a provider can observe the new intent.
-export function createMainNativeOrder(options: { database: Database; masterKey: Uint8Array; identity: MainOrderIdentity; input: unknown; now: number; wechatCredentialId?: string }) {
+export function createMainNativeOrder(options: { database: Database; masterKey: Uint8Array; identity: MainOrderIdentity; input: unknown; now: number; wechatCredentialId?: string; topup?: { requestId:string;actorId:string } }) {
   const { database, masterKey, identity, now } = options;
   let input: z.infer<typeof inputSchema>, amountCents: number;
   try {
@@ -62,6 +64,7 @@ export function createMainNativeOrder(options: { database: Database; masterKey: 
     const existing = sql.prepare(`SELECT n.*,o.notify_url FROM epay_orders o LEFT JOIN epay_main_native_orders n ON n.trade_no=o.trade_no
       WHERE o.merchant_id=? AND o.out_trade_no=?`).get(identity.epayMerchantId, input.merchantOrderId) as (NativeRow & { notify_url: string }) | undefined;
     if (existing && (!existing.order_id || existing.request_fingerprint !== fingerprint || existing.main_merchant_id !== identity.merchantId || existing.main_api_id !== identity.apiId)) throw new MainOrderConflict("main order conflict");
+    if (existing && isBalanceTopup(sql, existing.trade_no) !== Boolean(options.topup)) throw new MainOrderConflict("order kind conflicts with recharge request");
     if (!existing) {
       const legacy = readCurrentMainPayment(sql, cipher).payment.orders.some(row => row.merchantId === identity.merchantId && row.merchantOrderId === input.merchantOrderId);
       if (legacy) throw new LegacyMainOrder("legacy order remains owned by the previous gateway");
@@ -75,8 +78,13 @@ export function createMainNativeOrder(options: { database: Database; masterKey: 
     // Reuse the exact-order validator inside the caller's transaction, never nest BEGIN.
     const transaction = { instanceId: () => database.instanceId(), write: <T>(operation: (db: DatabaseSync) => T) => operation(sql) };
     const order = input.channel !== "wechat_native"
-      ? createExactAlipayOrder(transaction, masterKey, signed, "api", now)
-      : createExactWechatOrder(transaction, masterKey, signed, "api", options.wechatCredentialId ?? "", now);
+      ? createExactAlipayOrder(transaction, masterKey, signed, "api", now, "qr", Boolean(options.topup))
+      : createExactWechatOrder(transaction, masterKey, signed, "api", options.wechatCredentialId ?? "", now, Boolean(options.topup));
+    if(options.topup){
+      const previousTopup=sql.prepare('SELECT request_id,actor_id FROM epay_balance_topups WHERE trade_no=?').get(order.tradeNo);
+      if(previousTopup){if(previousTopup.request_id!==options.topup.requestId||previousTopup.actor_id!==options.topup.actorId)throw new MainOrderConflict('topup request belongs to another actor');}
+      else sql.prepare('INSERT INTO epay_balance_topups VALUES(?,?,?,?,?,?)').run(order.tradeNo,identity.epayMerchantId,options.topup.requestId,options.topup.actorId,amountCents,now);
+    }
     if (input.channel === "alipay_web") recordAlipayWebMode(sql, order.tradeNo, "pc", now);
     if (existing) return { ...order, orderId: existing.order_id, params: signed, access: issueMainOrderAccess(sql, existing.order_id, identity.epayMerchantId, now) };
     const orderId = randomUUID(), callbackId = randomUUID();

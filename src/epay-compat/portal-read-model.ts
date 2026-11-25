@@ -92,9 +92,12 @@ export function portalOverview(sql: DatabaseSync, scope: PortalScope, now: numbe
   }
   const pending = orders.filter(order => order.status === "PENDING").length;
   const callbacks = count(sql, "SELECT count(*) n FROM epay_callback_jobs WHERE (?=1 OR merchant_id=?) AND status IN ('PENDING','LEASED','FAILED')", ids);
+  const failedPaidCallbacks = count(sql, `SELECT count(*) n FROM epay_callback_jobs j
+    JOIN epay_orders o ON o.trade_no=j.trade_no AND o.merchant_id=j.merchant_id
+    WHERE (?=1 OR j.merchant_id=?) AND j.status='FAILED' AND o.status='PAID'`, ids);
   const refunds = count(sql, "SELECT count(*) n FROM epay_native_refunds WHERE (?=1 OR merchant_id=?) AND status IN ('REQUESTED','UNKNOWN')", ids);
   const settlements = count(sql, "SELECT count(*) n FROM epay_native_settlements WHERE (?=1 OR merchant_id=?) AND status='PENDING'", ids);
   return { observedAt: now, days, trend, today: trend[days - 1]!, periodCents: sum(trend.map(day => day.amountCents)), pending,
-    tasks: { callbacks, refunds, settlements }, missingPaidAt, merchants,
+    tasks: { callbacks, failedPaidCallbacks, refunds, settlements }, missingPaidAt, merchants,
     balances: { availableCents: sum(merchants.map(row => row.availableCents ?? 0)), frozenCents: sum(merchants.map(row => row.frozenCents ?? 0)) }, statisticsScope: "epay" as const };
 }

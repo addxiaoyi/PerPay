@@ -2,6 +2,7 @@ import { assertSiteOrder, assertSiteResource, assertSiteLedger, SITE_ADMIN_ROUTE
 import { createMerchantWorkspace } from "../epay-compat/merchant-workspace.ts";
 import { createMainMerchantConsole } from "../epay-compat/main-merchant-console.ts";
 import type { PayoutServices } from "../epay-compat/payout-routes.ts";
+import type { InvoiceProvider } from "../invoices/model.ts";
 import { createWechatPayoutCallback } from "../epay-compat/payout-wechat-callback.ts";
 import { authorizeMainAdmin, MerchantAccessError } from "../epay-compat/merchant-access.ts";
 import { mountEPayGateway } from "../epay-compat/gateway-runtime.ts";
@@ -254,7 +255,8 @@ const ledgerConflictResolutionSchema = z.object({
 
 export interface AppDependencies {
   readonly payouts?: PayoutServices;
-  readonly epayGateway?: { readonly app: Hono };
+  readonly invoiceProvider?: InvoiceProvider;
+  readonly epayGateway?: { readonly app: Hono; readonly readiness?: () => { status: string } };
   readonly merchantWorkspace?: { readonly identityOrigin: string; readonly identityFetch?: typeof fetch; readonly includeMainOrders?: boolean; readonly includeShadowBalance?: boolean } | undefined;
   readonly alipayAccounts?: AlipayAccountService | undefined;
   readonly accountHealth?: ((accountId: string) => { state: string; lastSuccessAt: number | null; lastErrorCode: string | null; collectionReady: boolean }) | undefined;
@@ -412,7 +414,7 @@ export function createApp(dependencies: AppDependencies): Hono<AppEnvironment> {
 
   if (dependencies.merchantWorkspace) {
     if (dependencies.payouts?.wechat) app.route("/api/merchant/epay/payouts/wechat", createWechatPayoutCallback(dependencies.payouts.wechat));
-    app.route("/api/merchant/epay", createMainMerchantConsole({ database: dependencies.database, masterKey: dependencies.config.masterKey, publicOrigin: dependencies.config.publicOrigin, allowAdministration: dependencies.config.epayGateway?.mode === "live" && !dependencies.demoMode, ...dependencies.merchantWorkspace, ...(dependencies.payouts ? { payouts: dependencies.payouts } : {}) }));
+    app.route("/api/merchant/epay", createMainMerchantConsole({ database: dependencies.database, masterKey: dependencies.config.masterKey, publicOrigin: dependencies.config.publicOrigin, allowAdministration: dependencies.config.epayGateway?.mode === "live" && !dependencies.demoMode, ...dependencies.merchantWorkspace, ...(dependencies.payouts ? { payouts: dependencies.payouts } : {}), ...(dependencies.invoiceProvider ? { invoiceProvider: dependencies.invoiceProvider } : {}), topupGateway: dependencies.epayGateway?.app, invoiceAutoSync: dependencies.config.taxInvoices?.autoSync === true, balancePaymentsEnabled: () => dependencies.config.epayGateway?.balancePaymentsEnabled === true && dependencies.epayGateway?.readiness?.().status === "ready" }));
     app.route("/api/merchant/epay", createMerchantWorkspace({ database: dependencies.database, ...dependencies.merchantWorkspace }));
     if (dependencies.merchantWorkspace.includeMainOrders) {
       app.route("/api/merchant/epay", createMainOrdersWorkspace({ database: dependencies.database, masterKey: dependencies.config.masterKey, ...dependencies.merchantWorkspace }));

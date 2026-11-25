@@ -1,0 +1,9 @@
+# Payment operations source bundle
+
+`operations.zip` contains a fixed list of public payment-alert scripts, their operational documentation, licensing notices, and a manifest with the source version and SHA-256 of every source file. The application container stays unchanged. Run these tools on the Linux host with Python 3 and the system tools required by the individual scripts. Offsite backup is deferred and its paused source is excluded from this bundle.
+
+The installer requires the matching full PerPay source release at `--app-root`, including its TypeScript invoice preflight and installed Node dependencies; this operations bundle does not replace that application source. The host alert scripts support Python 3.6 and later. The bundle contains no live configuration, webhook destination, SSH identity, database, master key, or backup password. Supply those through the existing private host configuration. Keep database and encryption-key recovery material separately protected. Check the release attachment checksum before extracting the bundle, then compare extracted source files with `manifest.json`.
+
+Review script `--help` output and the current host paths before installation. Existing units require explicit review; do not replace a working monitor or enable a destination that has not been configured. A successful local test does not prove remote notification delivery or server-outage detection. Confirm those outcomes using the configured destination and the service account, while retaining the production database and keys.
+
+Maintainers run `npm run test:operations` before publishing. Its explicit Python test registry rejects empty, missing, and newly unregistered test files. Register a new `*.test.py` in `scripts/test-operations.mjs` in the same change that adds the test. The package script reads only its public allowlist; it never enumerates a private host directory or includes local deployment artifacts.

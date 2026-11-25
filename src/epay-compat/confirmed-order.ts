@@ -1,8 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
+import { hasBalanceOrder } from "./balance-order-contract.ts";
+import { readConfirmedBalanceOrder } from "./balance-payment-audit.ts";
 
 export type ConfirmedOrder = { trade_no: string; out_trade_no: string; merchant_id: bigint | number; type_code: string | null; name: string; money_cents: bigint | number; real_money_cents: bigint | number; notify_url: string; return_url: string | null; param: string | null };
 
 export function readConfirmedOrder(db: DatabaseSync, tradeNo: string, merchantId: number): ConfirmedOrder | undefined {
+  if (hasBalanceOrder(db, tradeNo)) return readConfirmedBalanceOrder(db, tradeNo, merchantId);
   return db.prepare(`SELECT trade_no, out_trade_no, merchant_id, type_code, name, money_cents, real_money_cents, notify_url, return_url, param
     FROM epay_orders o WHERE trade_no = ? AND merchant_id = ? AND status = 'PAID' AND money_cents > 0 AND real_money_cents = money_cents
     AND get_money_cents = money_cents AND api_trade_no IS NOT NULL

@@ -1,0 +1,8 @@
+{
+  "target": "src/server.js",
+  "expectedSha256": "e04df3ccf740ec1829e881cbae74565c6a73fa71e9a2f812d3267dcc60c622a6",
+  "requiredImport": "  flushSaveSyncAndPg,",
+  "oldText": "  registerPaymentRoutes(app, {\n    config,\n    requireUser,\n    requireAdmin,\n    getStore,\n    jsonOk,\n    jsonErr,\n    scheduleSave,\n    appendAuditLog: (action, detail, req) => appendSecurityAudit(getStore(), req.user?.id || 'admin', action, detail),\n  })",
+  "newText": "  registerPaymentRoutes(app, {\n    config,\n    requireUser,\n    requireAdmin,\n    getStore,\n    jsonOk,\n    jsonErr,\n    scheduleSave,\n    flushSave: flushSaveSyncAndPg,\n    appendAuditLog: (action, detail, req) => appendSecurityAudit(getStore(), req.user?.id || 'admin', action, detail),\n  })",
+  "expectedOccurrences": 1
+}

@@ -21,6 +21,8 @@ class CutoverProxyTest(unittest.TestCase):
             self.assertIn('GET POST', rendered['perpay-candidate-workspace.conf'])
             self.assertIn('/pay/admin/merchant-workspace$is_args$args', rendered['epay.conf'])
             self.assertNotIn('/api/pay/wechat/notify', rendered['perpay-cutover-entry.conf'])
+            for action in ['orders', 'query', 'refund']:
+                self.assertIn('location = /pay/epay/balance/' + action, rendered['perpay-candidate-workspace.conf'])
 
     def test_missing_or_duplicate_location_is_not_silently_replaced(self):
         for source in ['location = /elsewhere { return 404; }', 'location = /pay { return 404; }\nlocation = /pay { return 404; }']:

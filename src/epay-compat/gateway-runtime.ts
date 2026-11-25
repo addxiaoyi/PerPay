@@ -1,4 +1,4 @@
-import { createPrivateKey } from "node:crypto";
+import { createPrivateKey, createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Hono, type Env } from "hono";
 import type { AppConfig } from "../config.ts";
@@ -20,6 +20,7 @@ import { createSourceSyncRoute } from "./source-sync-route.ts";
 import { EPayPaymentQueryScheduler } from "./payment-query-scheduler.ts";
 import { auditPaymentQueries } from "./payment-query-jobs.ts";
 import { queryAndConfirmAlipaySubmission } from "./isolated-alipay-query.ts";
+import { EPAY_CALLBACK_POLICY } from "./callback-policy.ts";
 import { queryOrCloseExpiredWechat } from "./wechat-close.ts";
 import { createMainOrderRoutes } from "./main-order-routes.ts";
 import { verifyAlipayQueryAccount } from "./alipay-query-account.ts";
@@ -28,6 +29,9 @@ import { processNativeRefund } from "./refund-provider.ts";
 import { auditNativeRefunds } from "./refund-audit.ts";
 import { createAlipayWebGateway, createAlipayWebReturn } from "./alipay-web-route.ts";
 import { readEPayParams } from "./shadow-gateway.ts";
+import type { InvoiceProvider } from "../invoices/model.ts";
+import { createInvoiceAutomationRoutes } from "../invoices/automation-routes.ts";
+import { createBalanceMerchantApi } from "./balance-payment-routes.ts";
 
 type Database = Pick<AppDatabase, "read" | "write" | "instanceId">;
 type GatewayConfig = NonNullable<AppConfig["epayGateway"]>;
@@ -40,6 +44,7 @@ export function createEPayRuntime(options: {
   publicOrigin: string;
   basePath: string;
   identityOrigin?: string | undefined;
+  invoiceProvider?: InvoiceProvider;
   onError: (code: string) => void;
 }) {
   const { database, masterKey, config } = options;
@@ -76,6 +81,7 @@ export function createEPayRuntime(options: {
   const mainOrders = options.identityOrigin ? createMainOrderRoutes({ ...shared, identityOrigin: options.identityOrigin, publicOrigin: options.publicOrigin,
     basePath: options.basePath, bridgeSecret, alipay, alipayWeb, wechat, wechatCredentialId: config.wechatCredentialId, onError: options.onError,
     alipayScanEnabled: Boolean(signer && !["pc", "wap"].includes(signer.product)),
+    canCreateTopup: () => config.mode==='live'&&readiness().status==='ready',
     invoiceFeeCents: config.invoiceFeeCents, canRequestInvoice: () => config.invoiceEnabled === true && config.mode === "live" && configurationStatus().status === "ready" }) : undefined;
   const runtime = createIsolatedGatewayRuntime({
     ...shared,
@@ -92,13 +98,19 @@ export function createEPayRuntime(options: {
     scheduler: {
       intervalMilliseconds: 5_000,
       maximumPerRun: 20,
-      policy: { timeoutMilliseconds: 10_000, leaseMilliseconds: 30_000, maximumAttempts: 12, retryDelayMilliseconds: 30_000 },
+      policy: EPAY_CALLBACK_POLICY,
       onError: () => options.onError("epay_callback_scheduler_failed"),
     },
   });
   runtime.app.route("/", createSourceSyncRoute({ database, masterKey, onError: options.onError }));
   runtime.app.route("/", createAlipayWebReturn(shared, options.basePath));
-  const queries = new EPayPaymentQueryScheduler({ database, intervalMilliseconds: 5_000, maximumPerRun: 5, onError: options.onError, query: {
+  if (options.identityOrigin) runtime.app.route("/tax-invoices", createInvoiceAutomationRoutes({
+    ...shared, identityOrigin: options.identityOrigin, publicOrigin: options.publicOrigin, bridgeSecret,
+    ...(options.invoiceProvider ? { provider: options.invoiceProvider } : {}),
+    onError: options.onError,
+    enabled: () => config.mode === "live" && runtime.admission().acceptingRequests && runtime.admission().acceptingOrders,
+  }));
+  const queries = new EPayPaymentQueryScheduler({ database, intervalMilliseconds: 5_000, maximumPerRun: 20, maximumConcurrency: 3, onError: options.onError, query: {
     alipay: tradeNo => {
       if (!signer) return Promise.reject(new Error("Alipay query channel unavailable"));
       return queryAndConfirmAlipaySubmission({ database, tradeNo, ...signer, transport: new NodeV3Transport(), absentOrderExpiry: { masterKey, instanceId: database.instanceId() } });
@@ -135,6 +147,14 @@ export function createEPayRuntime(options: {
       return context.json({ status: "not_ready", code: "epay_readiness_failed" }, 503);
     }
   });
+  if (options.identityOrigin) runtime.app.route('/balance',createBalanceMerchantApi({ ...shared,identityOrigin:options.identityOrigin,
+    publicOrigin:options.publicOrigin,basePath:options.basePath,bridgeSecret,enabled:()=>config.balancePaymentsEnabled===true&&readiness().status==='ready' }));
+  runtime.app.get('/docs/balance-merchant-sdk.zip',context=>{
+    const file=readFileSync(new URL('../../static/balance-merchant-sdk.zip',import.meta.url));
+    context.header('Content-Type','application/zip');context.header('Content-Disposition','attachment; filename="star-pay-balance-merchant-sdk.zip"');
+    context.header('Cache-Control','public, max-age=3600');context.header('ETag','"'+createHash('sha256').update(file).digest('hex')+'"');
+    return context.body(file);
+  });
   return {
     ...runtime,
     readiness,
@@ -142,10 +162,9 @@ export function createEPayRuntime(options: {
     refundHealth: () => refunds.health(),
     start: async () => {
       if (!config.callbackDelivery) return 0;
-      const processed = await runtime.start();
-      await queries.start();
-      await refunds.start();
-      return processed;
+      const started = await Promise.allSettled([runtime.start({ background: true }), queries.start(), refunds.start()]);
+      for (const entry of started) if (entry.status === "rejected") options.onError("epay_recovery_start_failed");
+      return started[0]?.status === "fulfilled" ? started[0].value : 0;
     },
     stop: async () => {
       const stopped = await Promise.allSettled([runtime.stop(), queries.stop(), refunds.stop()]);

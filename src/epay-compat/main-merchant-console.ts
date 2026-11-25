@@ -20,6 +20,10 @@ import { createCallbackRetryRoutes } from "./callback-retry-routes.ts";
 import { createMerchantProfileRoutes } from "./merchant-profile-routes.ts";
 import { createMerchantManagementRoutes } from "./merchant-management-routes.ts";
 import { createPayoutRoutes, type PayoutServices } from "./payout-routes.ts";
+import { createInvoiceRoutes } from "../invoices/routes.ts";
+import { createFeeInvoiceRoutes } from "../invoices/fee-routes.ts";
+import { createBalancePayerRoutes } from "./balance-payment-routes.ts";
+import type { InvoiceProvider } from "../invoices/model.ts";
 
 type Database = Pick<AppDatabase, "read" | "write" | "instanceId">;
 type Options = {
@@ -31,10 +35,15 @@ type Options = {
   readonly identityFetch?: typeof fetch;
   readonly clock?: () => number;
   readonly payouts?: PayoutServices;
+  readonly invoiceProvider?: InvoiceProvider;
+  readonly invoiceAutoSync?: boolean;
+  readonly balancePaymentsEnabled?: () => boolean;
+  readonly topupGateway?: { fetch(request:Request):Response|Promise<Response> } | undefined;
 };
 const TOKEN_TTL_MS = 10 * 60 * 1000;
 const MAX_BODY_BYTES = 4096;
 const MAX_DIRECTORY_MERCHANTS = 100;
+const DIRECTORY_TIMEOUT_MS = 8_000;
 const feeInput = z.object({
   expectedFeeBps: z.number().int().min(0).max(5000), expectedVersion: z.number().int().nonnegative(),
   feeBps: z.number().int().min(0).max(5000), reason: z.string().trim().min(1).max(512).regex(/^[^\x00-\x1f\x7f]+$/),
@@ -87,6 +96,17 @@ export function createMainMerchantConsole(options: Options) {
   app.route("/callbacks", createCallbackRetryRoutes({ ...options, enabled: options.allowAdministration }));
   app.route("/profile", createMerchantProfileRoutes({ ...options, enabled: options.allowAdministration }));
   app.route("/management", createMerchantManagementRoutes({ ...options, enabled: options.allowAdministration }));
+  app.route("/tax-invoices", createInvoiceRoutes({ ...options, provider: options.invoiceProvider, enabled: options.allowAdministration }));
+  app.route("/fee-invoices", createFeeInvoiceRoutes({ ...options, provider: options.invoiceProvider, enabled: options.allowAdministration, autoSyncEnabled: options.invoiceAutoSync === true }));
+  app.route("/balance-payments",createBalancePayerRoutes({ ...options,enabled:()=>options.allowAdministration&&(options.balancePaymentsEnabled?.()??false) }));
+  app.all('/topups',context=>{
+    if(!options.topupGateway)return context.json({ok:false,code:'topup_disabled'},503);
+    const url=new URL(context.req.url);url.pathname='/main/topups';return options.topupGateway.fetch(new Request(url,context.req.raw));
+  });
+  app.all('/topups/session',context=>{
+    if(!options.topupGateway)return context.json({ok:false,code:'topup_disabled'},503);
+    const url=new URL(context.req.url);url.pathname='/main/topups/session';return options.topupGateway.fetch(new Request(url,context.req.raw));
+  });
   const tokenKey = Buffer.from(hkdfSync("sha256", options.masterKey, Buffer.from(options.database.instanceId()), Buffer.from("perpay:main-merchant-csrf:v1"), 32));
   const now = () => {
     const value = (options.clock ?? Date.now)();
@@ -119,11 +139,12 @@ export function createMainMerchantConsole(options: Options) {
       FROM epay_merchant_bindings b JOIN epay_merchant_accounts m ON m.merchant_id=b.epay_merchant_id
       WHERE m.enabled=1 ORDER BY m.merchant_id LIMIT ?`).all(MAX_DIRECTORY_MERCHANTS + 1));
     if (candidates.length > MAX_DIRECTORY_MERCHANTS) throw new MerchantAccessError("unavailable");
+    const signal = AbortSignal.any([context.req.raw.signal, AbortSignal.timeout(DIRECTORY_TIMEOUT_MS)]);
     const merchants = [];
     for (let offset = 0; offset < candidates.length; offset += 4) {
       const batch = await Promise.all(candidates.slice(offset, offset + 4).map(async row => {
         try {
-          const access = await authorizeMerchant(authOptions(cookie, String(row.main_merchant_id)));
+          const access = await authorizeMerchant({ ...authOptions(cookie, String(row.main_merchant_id)), signal });
           if (access.epayMerchantId !== Number(row.merchant_id) || access.mainApiId !== row.main_api_id) throw new MerchantAccessError("invalid_binding");
           if (!access.userId) throw new MerchantAccessError("unauthenticated");
           return { userId: access.userId, merchantId: access.merchantId, epayMerchantId: access.epayMerchantId, name: String(row.name), role: access.role, feeBps: Number(row.fee_rate_bps), version: Number(row.updated_at) };

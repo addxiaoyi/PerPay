@@ -7,8 +7,11 @@ import { auditConfirmedPayments } from "./confirmation-audit.ts";
 import { auditNativeRefunds } from "./refund-audit.ts";
 import { auditNativeSettlements } from "./settlement-workflow.ts";
 import { auditPayouts } from "./payout-audit.ts";
+import { auditPaymentQueries } from "./payment-query-jobs.ts";
+import { callbackHealth } from "./callback-health.ts";
+import { sourceSynchronizationReady } from "./source-sync-status.ts";
 
-type Options = { database: Pick<AppDatabase, "read" | "instanceId">; masterKey: Uint8Array; identityOrigin: string; identityFetch?: typeof fetch; clock?: () => number };
+type Options = { database: Pick<AppDatabase, "read" | "instanceId">; masterKey: Uint8Array; identityOrigin: string; identityFetch?: typeof fetch; clock?: () => number; invoiceProvider?: unknown };
 const kinds = ["orders", "notifications", "ledger", "refunds", "settlements"] as const;
 export function createPortalRoutes(options: Options) {
   const app = new Hono();
@@ -40,9 +43,11 @@ export function createPortalRoutes(options: Options) {
         if (kind === "system") {
           const sync = sql.prepare("SELECT value FROM system_metadata WHERE key='epay_source_sync'").get();
           const source = sync ? JSON.parse(String(sync.value)) as { ok?: boolean; appliedAt?: number } : null;
-          return { observedAt: (options.clock ?? Date.now)(), sourceSync: { ok: source?.ok === true, appliedAt: source?.appliedAt ?? null },
+          const observedAt = (options.clock ?? Date.now)();
+          return { observedAt, sourceSync: { ok: sourceSynchronizationReady(sql, observedAt), appliedAt: source?.appliedAt ?? null },
+            paymentRecovery: auditPaymentQueries(sql, observedAt), callbacks: callbackHealth(sql, observedAt),
             payments: auditConfirmedPayments(sql), refunds: auditNativeRefunds(sql), settlements: auditNativeSettlements(sql), payouts: auditPayouts(sql, (options.clock ?? Date.now)()),
-            channels: sql.prepare("SELECT provider,product,enabled FROM epay_channels ORDER BY channel_id").all().map(row => ({ provider: String(row.provider), product: String(row.product), enabled: Number(row.enabled) === 1 })), invoiceEnabled: false };
+            channels: sql.prepare("SELECT provider,product,enabled FROM epay_channels ORDER BY channel_id").all().map(row => ({ provider: String(row.provider), product: String(row.product), enabled: Number(row.enabled) === 1 })), invoiceEnabled: Boolean(options.invoiceProvider) };
         }
         const rows = portalRecords(sql, cipher, scope, kind as typeof kinds[number]).filter(row =>
           (!query.get("targetMerchantId") || row.merchantId === query.get("targetMerchantId")) &&

@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 import { NavLink, Link, Outlet, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
-import { Activity, ArrowLeftRight, Bell, ClipboardList, CreditCard, FileText, Globe, KeyRound, LayoutDashboard, ListChecks, RefreshCw, Settings2, ShieldCheck, Store, Users, WalletCards } from "lucide-react";
+import { Activity, ArrowLeftRight, Bell, BookOpen, ClipboardList, CreditCard, FileText, Globe, KeyRound, LayoutDashboard, ListChecks, RefreshCw, Settings2, ShieldCheck, Store, Users, WalletCards } from "lucide-react";
 import { MerchantConsoleError } from "@/api/merchant-console";
 import { ConsoleQuery } from "@/components/merchant-console-state";
 import { Button } from "@/components/ui/button";
@@ -14,11 +14,13 @@ import { usePortalAccess } from "./use-portal-access";
 
 export function portalMode(): "admin" | "merchant" { return document.querySelector('meta[name="perpay-portal"]')?.getAttribute("content") === "merchant" ? "merchant" : "admin"; }
 const merchantLinks = [
+  ["/topups", "余额充值", WalletCards], ["/docs", "功能文档", BookOpen],
   ["/", "账户概览", LayoutDashboard], ["/collect", "创建收款", CreditCard], ["/orders", "我的订单", ClipboardList], ["/notifications", "收款通知", Bell],
   ["/ledger", "余额账本", WalletCards], ["/refunds", "退款申请", ArrowLeftRight], ["/settlements", "提现结算", CreditCard], ["/invoices", "历史发票", FileText],
   ["/payouts", "收款账户", WalletCards], ["/keys", "API 接入", KeyRound], ["/profile", "商户设置", Settings2], ["/fee", "我的费率", ShieldCheck],
 ] as const;
 const adminLinks = [
+  ["/docs", "功能文档", BookOpen],
   ["/", "总览", LayoutDashboard], ["/merchants", "商户管理", Store], ["/orders", "全部订单", ClipboardList], ["/tasks", "全局待处理", ListChecks],
   ["/ledger", "余额账本", WalletCards], ["/notifications", "全部通知", Bell], ["/refunds", "退款审批", ArrowLeftRight], ["/settlements", "提现审批", CreditCard],
 ] as const;
@@ -51,7 +53,7 @@ function PortalLayout({ context, route, refresh }: { context: PortalContextValue
   const query = mode === "merchant" ? `?merchantId=${encodeURIComponent(selected.merchantId)}` : "";
   useEffect(() => { document.title = `${title} · ${mode === "admin" ? "管理中心" : selected.name} · StarPAY`; setOpenMobile(false); }, [title, mode, selected.name, route, setOpenMobile]);
   const links = mode === "admin" ? adminLinks : merchantLinks;
-  function selectMerchant(value: string | null) { if (value) void navigate({ pathname: route, search: `?merchantId=${encodeURIComponent(value)}` }); }
+  function selectMerchant(value: string | null) { if (!value) return; const next = section === "balance-pay" ? new URLSearchParams(location.search) : new URLSearchParams(); next.set("merchantId", value); void navigate({ pathname: route, search: `?${next.toString()}` }); }
   return <>
     <Sidebar variant="inset" collapsible="icon"><SidebarHeader><SidebarMenu><SidebarMenuItem><SidebarMenuButton size="lg" render={<Link to={`/${query}`} />}><WalletCards className="size-5!" /><span className="text-base font-semibold">StarPAY</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu><p className="px-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">{mode === "admin" ? "平台管理" : "商户中心"} · {enabled ? "服务运行中" : "维护中"}</p></SidebarHeader>
       <SidebarContent><nav aria-label={mode === "admin" ? "管理员导航" : "商户导航"} className="p-2"><SidebarMenu>{links.map(([path, label, Icon]) => <SidebarMenuItem key={path}><SidebarMenuButton tooltip={label} isActive={path === "/" ? route === "/" : route.startsWith(path)} render={<NavLink to={`${path}${query}`} end={path === "/"} />}><Icon /><span>{label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></nav></SidebarContent>
@@ -65,7 +67,7 @@ function PortalLayout({ context, route, refresh }: { context: PortalContextValue
       <span className="text-muted-foreground">/</span><span className="min-w-0 truncate text-sm">{detail ? `${selected.name} · ${title}` : title}</span>
       <div className="ml-auto flex items-center gap-1"><Button variant="ghost" size="icon" aria-label="刷新权限与记录" onClick={refresh}><RefreshCw className="size-4" /></Button><ThemeControl /></div></header>
       <div id="portal-content" className="min-w-0 space-y-6 p-4 md:p-6"><h1 className="sr-only">{title}</h1>{!enabled && <p role="status" className="rounded-lg border p-4 text-sm">支付服务正在维护，仍可查看历史记录。</p>}
-        {detail && <div className="space-y-4"><Link className="text-sm text-muted-foreground hover:text-foreground" to="/merchants">← 返回商户列表</Link><h2 className="text-xl font-semibold">{selected.name}</h2><nav aria-label="商户管理功能" className="flex flex-wrap gap-1 border-b pb-3">{["overview", "orders", "ledger", "adjustments", "fee", "refunds", "settlements", "payouts", "invoices", "notifications", "members", "profile", "keys"].map(item => <Button key={item} size="sm" variant={section === item ? "secondary" : "ghost"} render={<Link to={`/merchants/${encodeURIComponent(selected.merchantId)}/${item}`} />}>{portalLabels[item]}</Button>)}</nav></div>}
+        {detail && <div className="space-y-4"><Link className="text-sm text-muted-foreground hover:text-foreground" to="/merchants">← 返回商户列表</Link><h2 className="text-xl font-semibold">{selected.name}</h2><nav aria-label="商户管理功能" className="flex flex-wrap gap-1 border-b pb-3">{["overview", "orders", "ledger", "adjustments", "fee", "refunds", "settlements", "payouts", "topups", "invoices", "notifications", "members", "profile", "keys"].map(item => <Button key={item} size="sm" variant={section === item ? "secondary" : "ghost"} render={<Link to={`/merchants/${encodeURIComponent(selected.merchantId)}/${item}`} />}>{portalLabels[item]}</Button>)}</nav></div>}
         <Outlet key={`${mode}:${selected.merchantId}`} />
       </div>
     </SidebarInset>

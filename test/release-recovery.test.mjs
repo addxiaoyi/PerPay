@@ -5,10 +5,12 @@ import { test } from 'node:test';
 import { parse } from 'yaml';
 import { recoverLatest } from '../scripts/recover-release-promotion.mjs';
 
-const image = 'ghcr.io/mashiro0619/perpay';
 const sha = bytes => 'sha256:' + createHash('sha256').update(bytes).digest('hex');
 const encode = value => Buffer.from(JSON.stringify(value));
 function fixture(change = {}) {
+  const repository = change.repository ?? 'addxiaoyi/PerPay';
+  const repositoryPath = repository.toLowerCase();
+  const image = 'ghcr.io/' + repositoryPath;
   const revision = 'a'.repeat(40);
   const tagObject = 'b'.repeat(40);
   const objects = new Map();
@@ -38,7 +40,7 @@ function fixture(change = {}) {
   steps.push({ name: 'Promote the validated image to latest', conclusion: 'failure' });
   steps.push({ name: 'Publish the GitHub Release', conclusion: 'skipped' });
   if (change.failedScan) steps.find(step => step.name.startsWith('Scan the arm64')).conclusion = 'failure';
-  const run = { name: 'Release', path: '.github/workflows/release.yml', event: 'push', head_branch: 'v0.2.0', repository: { full_name: 'Mashiro0619/PerPay' }, status: 'completed', conclusion: 'failure', head_sha: revision };
+  const run = { name: 'Release', path: '.github/workflows/release.yml', event: 'push', head_branch: 'v0.2.0', repository: { full_name: change.wrongRepository ? 'Mashiro0619/PerPay' : repository }, status: 'completed', conclusion: 'failure', head_sha: revision };
   const api = new Map([
     ['actions/runs/123', run],
     ['actions/runs/123/jobs?filter=latest&per_page=100', { total_count: 2, jobs: [{ name: 'verify', conclusion: change.failedChecks ? 'failure' : 'success' }, { name: 'publish', conclusion: 'failure', steps }] }],
@@ -49,18 +51,21 @@ function fixture(change = {}) {
   const calls = [];
   let latestReads = 0;
   let promoted = false;
-  const options = { version: '0.2.0', sourceRunId: '123', targetDigest, expectedLatestDigest: oldDigest, githubToken: 'test-only-github-token', actor: 'test-actor' };
+  const options = { version: '0.2.0', sourceRunId: '123', targetDigest, expectedLatestDigest: oldDigest, githubToken: 'test-only-github-token', actor: 'test-actor', repository };
   async function fetchImpl(url, init = {}) {
     const method = init.method ?? 'GET';
     calls.push({ url, method, body: init.body });
-    const prefix = 'https://api.github.com/repos/Mashiro0619/PerPay/';
+    const prefix = 'https://api.github.com/repos/' + repositoryPath + '/';
     if (url.startsWith(prefix)) {
       const value = api.get(url.slice(prefix.length));
       assert.ok(value, 'Unexpected GitHub API request');
       return Response.json(value);
     }
-    if (url.startsWith('https://ghcr.io/token?')) return Response.json({ token: 'test-only-registry-token' });
-    const registryPrefix = 'https://ghcr.io/v2/mashiro0619/perpay/';
+    if (url.startsWith('https://ghcr.io/token?')) {
+      assert.ok(['repository:' + repositoryPath + ':pull', 'repository:' + repositoryPath + ':pull,push'].includes(new URL(url).searchParams.get('scope')));
+      return Response.json({ token: 'test-only-registry-token' });
+    }
+    const registryPrefix = 'https://ghcr.io/v2/' + repositoryPath + '/';
     assert.ok(url.startsWith(registryPrefix));
     const ref = url.slice(registryPrefix.length);
     if (method === 'PUT') {
@@ -82,20 +87,21 @@ function fixture(change = {}) {
     assert.ok(bytes, 'Unexpected registry request: ' + ref);
     return new Response(bytes, { headers: { 'docker-content-digest': sha(bytes) } });
   }
-  return { options, calls, fetchImpl, revision, targetDigest };
+  return { options, calls, fetchImpl, revision, targetDigest, environment: { GITHUB_REPOSITORY: repository } };
 }
 
 test('recovery promotes only the exact scanned image and leaves fixed version tags untouched', async () => {
   const state = fixture();
-  assert.deepEqual(await recoverLatest(state.options, state.fetchImpl), { version: '0.2.0', revision: state.revision, previous: '0.1.0', digest: state.targetDigest });
+  assert.deepEqual(await recoverLatest(state.options, state.fetchImpl, state.environment), { version: '0.2.0', revision: state.revision, previous: '0.1.0', digest: state.targetDigest });
   const writes = state.calls.filter(call => call.method !== 'GET');
   assert.equal(writes.length, 1);
-  assert.equal(writes[0].url, 'https://ghcr.io/v2/mashiro0619/perpay/manifests/latest');
+  assert.equal(writes[0].url, 'https://ghcr.io/v2/addxiaoyi/perpay/manifests/latest');
 });
 
 for (const [name, change] of [
   ['failed security scanning', { failedScan: true }],
   ['failed release tests', { failedChecks: true }],
+  ['a source run belonging to the upstream repository', { wrongRepository: true }],
   ['an unsigned release tag', { unsignedTag: true }],
   ['a moved release tag', { movedTag: true }],
   ['a newer published release', { newerRelease: true }],
@@ -107,7 +113,7 @@ for (const [name, change] of [
 ]) {
   test('recovery refuses ' + name + ' before writing', async () => {
     const state = fixture(change);
-    await assert.rejects(recoverLatest(state.options, state.fetchImpl));
+    await assert.rejects(recoverLatest(state.options, state.fetchImpl, state.environment));
     assert.equal(state.calls.filter(call => call.method !== 'GET').length, 0);
   });
 }
@@ -118,15 +124,34 @@ test('recovery refuses malformed inputs and mismatching operator-confirmed diges
     { targetDigest: 'sha256:' + 'e'.repeat(64) }, { expectedLatestDigest: 'sha256:' + 'f'.repeat(64) },
   ]) {
     const state = fixture();
-    await assert.rejects(recoverLatest({ ...state.options, ...overrides }, state.fetchImpl));
+    await assert.rejects(recoverLatest({ ...state.options, ...overrides }, state.fetchImpl, state.environment));
     assert.equal(state.calls.filter(call => call.method !== 'GET').length, 0);
   }
 });
 
 test('recovery never repeats a promotion after an uncertain network response', async () => {
   const state = fixture({ uncertainWrite: true });
-  await assert.rejects(recoverLatest(state.options, state.fetchImpl), /uncertain network response/);
+  await assert.rejects(recoverLatest(state.options, state.fetchImpl, state.environment), /uncertain network response/);
   assert.equal(state.calls.filter(call => call.method !== 'GET').length, 1);
+});
+
+test('recovery rejects a cross-owner target before contacting any service', async () => {
+  const state = fixture();
+  await assert.rejects(recoverLatest({ ...state.options, targetRepository: 'Mashiro0619/PerPay' }, state.fetchImpl, state.environment), /must match the trusted/);
+  assert.equal(state.calls.length, 0);
+});
+
+test('recovery can operate upstream only when its trusted source is actually upstream', async () => {
+  const state = fixture({ repository: 'Mashiro0619/PerPay' });
+  await recoverLatest(state.options, state.fetchImpl, { GITHUB_REPOSITORY: 'Mashiro0619/PerPay' });
+  assert.equal(state.calls.filter(call => call.method === 'PUT')[0].url, 'https://ghcr.io/v2/mashiro0619/perpay/manifests/latest');
+});
+
+test('an explicit recovery source cannot override the trusted Actions repository', async () => {
+  const state = fixture({ repository: 'Mashiro0619/PerPay' });
+  await assert.rejects(recoverLatest(state.options, state.fetchImpl,
+    { GITHUB_REPOSITORY: 'addxiaoyi/PerPay' }), /must match the trusted/);
+  assert.equal(state.calls.length, 0);
 });
 
 test('release recovery is manual, serialized with releases, and uses only the ephemeral job token', () => {
@@ -140,16 +165,17 @@ test('release recovery is manual, serialized with releases, and uses only the ep
   const step = job.steps.find(step => step.run);
   assert.equal(step.run, 'node scripts/recover-release-promotion.mjs');
   assert.match(step.env.GITHUB_TOKEN, /secrets\.GITHUB_TOKEN/);
+  assert.equal(step.env.PERPAY_RELEASE_REPOSITORY, '${{ github.repository }}');
   assert.equal(job.steps[0].with['persist-credentials'], false);
 });
 
 test('recovery accepts current stable release workflow step names without relaxing latest protection', async () => {
   const state = fixture({ currentStepName: true });
-  assert.equal((await recoverLatest(state.options, state.fetchImpl)).version, '0.2.0');
+  assert.equal((await recoverLatest(state.options, state.fetchImpl, state.environment)).version, '0.2.0');
 });
 
 test('recovery rejects prerelease versions before contacting GitHub or the registry', async () => {
   const state = fixture();
-  await assert.rejects(recoverLatest({ ...state.options, version: '0.3.0-rc.1' }, state.fetchImpl), /Only stable releases/);
+  await assert.rejects(recoverLatest({ ...state.options, version: '0.3.0-rc.1' }, state.fetchImpl, state.environment), /Only stable releases/);
   assert.equal(state.calls.length, 0);
 });

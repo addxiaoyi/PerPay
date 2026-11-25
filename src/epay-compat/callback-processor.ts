@@ -4,6 +4,7 @@ import { deliverEPayPaidNotification, type EPayPaidNotification } from "./notifi
 import { EPayCallbackOutbox } from "./outbox.ts";
 import { readConfirmedOrder, type ConfirmedOrder } from "./confirmed-order.ts";
 import { deliverMainCallback, type MainCallback } from "./main-callback.ts";
+import { hasBalanceOrder } from "./balance-order-contract.ts";
 
 class CallbackSecretReadError extends Error {}
 class CallbackOrderReadError extends Error {}
@@ -25,8 +26,9 @@ export class EPayCallbackProcessor {
     this.#mainCallback = options.mainCallback;
   }
 
-  async processOne(options: { timeoutMilliseconds: number; leaseMilliseconds: number; maximumAttempts: number; retryDelayMilliseconds: number; signal?: AbortSignal }): Promise<boolean> {
+  async processOne(options: { timeoutMilliseconds: number; leaseMilliseconds: number; maximumAttempts: number; retryDelayMilliseconds: number; retryMaximumDelayMilliseconds?: number; signal?: AbortSignal }): Promise<boolean> {
     if (!Number.isSafeInteger(options.timeoutMilliseconds) || options.timeoutMilliseconds < 1 || options.timeoutMilliseconds > 30_000 || !Number.isSafeInteger(options.leaseMilliseconds) || options.leaseMilliseconds < options.timeoutMilliseconds + 1_000 || !Number.isSafeInteger(options.retryDelayMilliseconds) || options.retryDelayMilliseconds < 1 || !Number.isSafeInteger(options.maximumAttempts) || options.maximumAttempts < 1 || options.maximumAttempts > 100) throw new Error("invalid callback timing policy");
+    if (options.retryMaximumDelayMilliseconds !== undefined && (!Number.isSafeInteger(options.retryMaximumDelayMilliseconds) || options.retryMaximumDelayMilliseconds < options.retryDelayMilliseconds || options.retryMaximumDelayMilliseconds > 86_400_000)) throw new Error("invalid callback backoff policy");
     if (options.signal?.aborted) return false;
     const claim = this.#queue.claim(this.#clock(), options.leaseMilliseconds, options.maximumAttempts);
     if (!claim) return false;
@@ -45,7 +47,7 @@ export class EPayCallbackProcessor {
       let main: MainCallback | null | undefined;
       try {
         main = this.#mainCallback?.(row);
-        if (!main && this.#database.read(db => db.prepare("SELECT 1 FROM epay_main_native_orders WHERE trade_no=?").get(row!.trade_no))) throw new Error("main callback resolver is unavailable");
+        if (!main && this.#database.read(db => db.prepare("SELECT 1 FROM epay_main_native_orders WHERE trade_no=?").get(row!.trade_no) || hasBalanceOrder(db, row!.trade_no))) throw new Error("main callback resolver is unavailable");
       } catch (cause) { throw new CallbackSecretReadError("main callback contract could not be read", { cause }); }
       if (main) {
         const delivery = await deliverMainCallback({ callback: main, transport: this.#transport(new URL(row.notify_url).origin), phase: claim.method, now: this.#clock(), timeoutMilliseconds: options.timeoutMilliseconds, signal: options.signal });
@@ -74,7 +76,8 @@ export class EPayCallbackProcessor {
       retryable = error instanceof CallbackOrderReadError || error instanceof CallbackSecretReadError || (error instanceof WebhookTransportError && error.retryable);
       errorCode = error instanceof CallbackOrderReadError ? "callback_order_read_failed" : error instanceof CallbackSecretReadError ? "callback_secret_read_failed" : error instanceof WebhookTransportError ? error.code : "callback_configuration_invalid";
     }
-    this.#queue.complete({ ...claim, now: this.#clock(), acknowledged, retryable, ...(httpStatus === undefined ? {} : { httpStatus }), ...(errorCode === undefined ? {} : { errorCode }), retryDelayMilliseconds: options.retryDelayMilliseconds, maximumAttempts: options.maximumAttempts });
+    this.#queue.complete({ ...claim, now: this.#clock(), acknowledged, retryable, ...(httpStatus === undefined ? {} : { httpStatus }), ...(errorCode === undefined ? {} : { errorCode }), retryDelayMilliseconds: options.retryDelayMilliseconds, maximumAttempts: options.maximumAttempts,
+      ...(options.retryMaximumDelayMilliseconds === undefined ? {} : { retryMaximumDelayMilliseconds: options.retryMaximumDelayMilliseconds }) });
     return true;
   }
 }

@@ -47,6 +47,7 @@ it("applies encrypted shared captures through the live database owner without a 
     assert.equal(JSON.stringify(sealed).includes("main-1"), false);
     const first = await f.send(sealed);
     assert.equal(first.status, 200);
+    assert.match(first.headers.get("server-timing") ?? "", /^source-validate;dur=\d+, source-apply;dur=\d+$/);
     assert.equal(await responseValue(first, "mainSequence"), 1);
     const second = await f.send(sealed);
     assert.equal(second.status, 200);

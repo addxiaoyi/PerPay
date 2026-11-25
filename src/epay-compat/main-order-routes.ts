@@ -1,4 +1,11 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
+import { z, ZodError } from "zod";
+import { createHash } from "node:crypto";
+import { merchantMutationAuth } from "./merchant-mutation-auth.ts";
+import { readLiveBalance } from "./live-balance.ts";
+import { requireInvoiceWriter } from "../invoices/store.ts";
+import { InvoiceError } from "../invoices/model.ts";
+import type { MainOrderIdentity } from "./main-native-order.ts";
 import type { AppDatabase } from "../database/database.ts";
 import { parseStrictJson } from "../http/strict-json.ts";
 import { authenticateMainOrder, readBoundedBody } from "./main-order-auth.ts";
@@ -11,13 +18,15 @@ import { createMainPaymentRoutes } from "./main-payment-routes.ts";
 import { createMainOrderList } from "./main-order-list.ts";
 import { readAlipayWebUrl } from "./alipay-web.ts";
 import { RuntimeSecretCipher } from "../settings/crypto.ts";
+import { topupResumeInput, topupReturnUrl } from './topup-return.ts';
+import { BalancePaymentError } from './balance-payment.ts';
 
 type Database = Pick<AppDatabase, "read" | "write" | "instanceId">;
 type Gateway = { fetch(request: Request): Response | Promise<Response> };
 type Options = {
   database: Database; masterKey: Uint8Array; identityOrigin: string; publicOrigin: string; basePath: string;
   bridgeSecret?: string | undefined; send?: typeof fetch; clock?: () => number;
-  alipayScanEnabled?: boolean;
+  alipayScanEnabled?: boolean; canCreateTopup?: () => boolean;
   invoiceFeeCents?: number | undefined; canRequestInvoice?: () => boolean;
   wechatCredentialId?: string | undefined; alipay: Gateway; alipayWeb?: Gateway | undefined; wechat: Gateway; onError: (code: string) => void;
 };
@@ -28,6 +37,9 @@ export function createMainOrderRoutes(options: Options) {
   app.route("/payment", createMainPaymentRoutes(options));
   app.route("/", createMainOrderList(options));
   app.onError((error, context) => {
+    if (error instanceof BalancePaymentError) return context.json({ok:false,code:error.code,error:'原支付链接无效或已过期，请从原网站重新进入收银台。'},error.status);
+    if (error instanceof ZodError) return context.json({ ok: false, code: "invalid_topup", error: "请核对充值金额和支付通道。" }, 400);
+    if (error instanceof InvoiceError) return context.json({ ok: false, code: error.code, error: error.message }, error.status);
     if (error instanceof MerchantAccessError) return context.json({ ok: false, error: error.code }, error.code === "unauthenticated" ? 401 : error.code === "unavailable" ? 503 : 403);
     if (error instanceof MainOrderInputError) return context.json({ ok: false, error: "订单参数无效，当前支持支付宝网页、支付宝扫码和微信扫码。", code: "invalid_order" }, 400);
     if (error instanceof LegacyMainOrder) return context.json({ ok: false, error: "该订单由原支付系统处理，请查询原订单。", code: "legacy_order_owned" }, 409);
@@ -35,16 +47,8 @@ export function createMainOrderRoutes(options: Options) {
     options.onError("main_order_request_failed");
     return context.json({ ok: false, error: "暂时无法处理订单，请使用原订单号重试。", code: "order_unavailable" }, 503);
   });
-  app.post("/orders", async context => {
-    if (!/^application\/json(?:;|$)/i.test(context.req.header("content-type") ?? "")) return context.json({ ok: false, error: "invalid_content_type" }, 415);
-    let raw: string, input: unknown;
-    try { const bytes = await readBoundedBody(context.req.raw.body, 8192); raw = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); input = parseStrictJson(bytes); }
-    catch { return context.json({ ok: false, error: "invalid_body" }, 400); }
-    const identity = await authenticateMainOrder(options, context.req.raw, raw);
-    if (options.alipayScanEnabled === false && input && typeof input === "object" && "channel" in input && input.channel === "alipay_scan") {
-      return context.json({ ok: false, code: "channel_unavailable", error: "当前支付宝通道使用网页收银台，请选择支付宝网页支付。" }, 400);
-    }
-    const created = createMainNativeOrder({ database: options.database, masterKey: options.masterKey, identity, input, now: clock(), ...(options.wechatCredentialId ? { wechatCredentialId: options.wechatCredentialId } : {}) });
+  async function respondOrder(context: Context, identity: MainOrderIdentity, input: unknown, topup?: {requestId:string;actorId:string}) {
+    const created = createMainNativeOrder({ database: options.database, masterKey: options.masterKey, identity, input, now: clock(), ...(topup ? { topup } : {}), ...(options.wechatCredentialId ? { wechatCredentialId: options.wechatCredentialId } : {}) });
     const before = readMainOrder(options, created.orderId, identity.epayMerchantId, clock());
     if (before.status === "pending_sync" && !storedMainQr(options, created.tradeNo, identity.epayMerchantId)) {
       const web = options.database.read(sql => Boolean(sql.prepare("SELECT 1 FROM epay_alipay_web_orders WHERE trade_no=?").get(created.tradeNo)));
@@ -59,7 +63,61 @@ export function createMainOrderRoutes(options: Options) {
     const root = `${options.publicOrigin}${options.basePath === "/" ? "" : options.basePath}/epay/main`;
     const checkoutUrl = `${root}/checkout/${created.orderId}?token=${encodeURIComponent(token)}`;
     return context.json({ ok: true, order, checkoutToken: token, checkoutUrl, access: created.access, duplicate: !created.created }, order.status === "pending_sync" ? 202 : created.created ? 201 : 200);
+  }
+  app.post("/orders", async context => {
+    if (!/^application\/json(?:;|$)/i.test(context.req.header("content-type") ?? "")) return context.json({ ok: false, error: "invalid_content_type" }, 415);
+    let raw: string, input: unknown;
+    try { const bytes = await readBoundedBody(context.req.raw.body, 8192); raw = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); input = parseStrictJson(bytes); }
+    catch { return context.json({ ok: false, error: "invalid_body" }, 400); }
+    const identity = await authenticateMainOrder(options, context.req.raw, raw);
+    if (options.alipayScanEnabled === false && input && typeof input === "object" && "channel" in input && input.channel === "alipay_scan") {
+      return context.json({ ok: false, code: "channel_unavailable", error: "当前支付宝通道使用网页收银台，请选择支付宝网页支付。" }, 400);
+    }
+    return respondOrder(context, identity, input);
   });
+  const topupAuth=merchantMutationAuth({ ...options,identityFetch:options.send },'balance-topup');
+  app.get('/topups/session',async context=>{
+    const {access,cookie}=await topupAuth.authenticate(context.req.raw,false);
+    options.database.read(sql=>requireInvoiceWriter(sql,access));
+    const balance=options.database.read(sql=>readLiveBalance(sql,access.epayMerchantId));
+    const channels=[...(options.alipayWeb?['alipay_web']:[]),...(options.wechatCredentialId?['wechat_native']:[])];
+    return context.json({ok:true,data:{merchantId:access.merchantId,balance,channels,canRecharge:options.canCreateTopup?.()??false,csrfToken:topupAuth.issue(cookie,access)}});
+  });
+  app.get('/topups',async context=>{
+    const {access}=await topupAuth.authenticate(context.req.raw,false);
+    const root = `${options.publicOrigin}${options.basePath==='/'?'':options.basePath}/epay/main`;
+    const topups=options.database.read(sql=>{
+      requireInvoiceWriter(sql,access);
+      return sql.prepare(`SELECT t.trade_no,t.amount_cents,t.created_at,o.status,o.paid_at,n.order_id FROM epay_balance_topups t
+        JOIN epay_orders o ON o.trade_no=t.trade_no JOIN epay_main_native_orders n ON n.trade_no=t.trade_no
+        WHERE t.merchant_id=? ORDER BY t.created_at DESC LIMIT 20`).all(access.epayMerchantId).map(row=>{
+          const token = issueCheckoutToken(options.masterKey,options.database.instanceId(),String(row.trade_no),access.epayMerchantId,clock());
+          return {tradeNo:String(row.trade_no),amountCents:Number(row.amount_cents),createdAt:Number(row.created_at),status:row.status,
+            paidAt:row.paid_at===null?null:Number(row.paid_at),checkoutUrl:row.status==='PENDING'?`${root}/checkout/${row.order_id}?token=${encodeURIComponent(token)}`:null};
+        });
+    });
+    return context.json({ok:true,data:{merchantId:access.merchantId,topups}});
+  });
+  app.post('/topups',async context=>{
+    if (!/^application\/json(?:;|$)/i.test(context.req.header('content-type') ?? '')) return context.json({ok:false,code:'invalid_content_type'},415);
+    if(!options.canCreateTopup?.())return context.json({ok:false,code:'topup_disabled',error:'充值暂未开放。'},503);
+    let payload: unknown;
+    try { payload = parseStrictJson(await readBoundedBody(context.req.raw.body,8192)); }
+    catch { return context.json({ok:false,code:'invalid_body'},400); }
+    const command=z.object({requestId:z.string().regex(/^[A-Za-z0-9_-]{16,80}$/),amount:z.string().max(32),channel:z.enum(['alipay_web','wechat_native']),resume:topupResumeInput.optional()}).strict().parse(payload);
+    const {access}=await topupAuth.authenticate(context.req.raw,true);options.database.read(sql=>requireInvoiceWriter(sql,access));
+    const channelUnavailable = (command.channel==='alipay_web'&&!options.alipayWeb)||(command.channel==='wechat_native'&&!options.wechatCredentialId);
+    if(channelUnavailable)throw new MainOrderInputError('topup channel unavailable');
+    const identity=await authenticateMainOrder(options,context.req.raw,JSON.stringify(command));
+    if(identity.merchantId!==access.merchantId||identity.epayMerchantId!==access.epayMerchantId)throw new MerchantAccessError('forbidden');
+    const refreshed=await topupAuth.authenticate(context.req.raw,true);options.database.read(sql=>requireInvoiceWriter(sql,refreshed.access));
+    if(access.userId!==refreshed.access.userId||access.epayMerchantId!==refreshed.access.epayMerchantId||!options.canCreateTopup?.())throw new MerchantAccessError('forbidden');
+    const root=options.basePath==='/'?'':options.basePath;
+    const response=await respondOrder(context,identity,{merchantOrderId:'topup_'+createHash('sha256').update(command.requestId).digest('hex').slice(0,40),amount:command.amount,channel:command.channel,subject:'商户余额充值',notifyUrl:options.publicOrigin+root+'/epay/main/topups/notification',returnUrl:topupReturnUrl(options,refreshed.access,command.resume)}, {requestId:command.requestId,actorId:access.userId!});
+    const body=await response.json() as Record<string,unknown>;
+    return context.json({ok:true,data:{merchantId:access.merchantId,...body}},response.status as 200|201|202);
+  });
+  app.post('/topups/notification',context=>context.json({ok:false,code:'native_callback_required',error:'充值只通过已验证的支付通道回调确认。'},400));
   app.get("/checkout/:id", async context => {
     const query = new URL(context.req.url).searchParams, tokens = query.getAll("token");
     if (tokens.length !== 1 || [...query.keys()].some(key => key !== "token")) return checkoutNotice("订单链接无效", "请返回商户重新获取收款链接。", 404);

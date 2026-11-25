@@ -1,14 +1,20 @@
 import type { DatabaseSync } from "node:sqlite";
+import { hasBalanceConfirmationTable, auditBalanceTransfers } from "./balance-payment-audit.ts";
+import { auditInvoiceSubscriptionCharges } from "../invoices/subscription-audit.ts";
 
 // Imported PAID states remain source records. They must not be confused with a
 // native intent marked paid without proof, nor replayed into the new outbox.
 export function auditConfirmedPayments(db: DatabaseSync): { confirmed: number; inconsistent: number; unconfirmedLedger: number; unconfirmedCallbacks: number; paidWithoutConfirmation: number; intentPaidWithoutConfirmation: number; paidWithoutIntent: number } {
+  const balances = hasBalanceConfirmationTable(db);
+  const balanceProofs = balances ? "UNION ALL SELECT trade_no,merchant_id,amount_cents,fee_cents,provider_trade_no,'balance' AS channel FROM epay_balance_confirmations" : "";
+  const balanceIntents = balances ? "OR EXISTS(SELECT 1 FROM epay_balance_orders i WHERE i.trade_no=o.trade_no)" : "";
   const row = db.prepare(`WITH proofs AS (
     SELECT trade_no, merchant_id, amount_cents, fee_cents, provider_trade_no, 'alipay' AS channel
       FROM epay_alipay_confirmations
     UNION ALL
     SELECT trade_no, merchant_id, amount_cents, fee_cents, provider_trade_no, 'wxpay' AS channel
       FROM epay_wechat_confirmations
+    ${balanceProofs}
   ), checked AS (
     SELECT p.trade_no,
       CASE WHEN p.amount_cents <= 0 OR p.fee_cents < 0 OR p.fee_cents > p.amount_cents
@@ -31,7 +37,7 @@ export function auditConfirmedPayments(db: DatabaseSync): { confirmed: number; i
   ), unconfirmed AS (
     SELECT o.trade_no,
       EXISTS(SELECT 1 FROM epay_alipay_intents i WHERE i.trade_no=o.trade_no)
-        OR EXISTS(SELECT 1 FROM epay_wechat_intents i WHERE i.trade_no=o.trade_no) AS has_intent
+        OR EXISTS(SELECT 1 FROM epay_wechat_intents i WHERE i.trade_no=o.trade_no) ${balanceIntents} AS has_intent
     FROM epay_orders o WHERE o.status='PAID'
       AND NOT EXISTS(SELECT 1 FROM proofs p WHERE p.trade_no=o.trade_no)
   ) SELECT (SELECT count(*) FROM checked) AS confirmed,
@@ -45,5 +51,7 @@ export function auditConfirmedPayments(db: DatabaseSync): { confirmed: number; i
   const confirmed = Number(row.confirmed), inconsistent = Number(row.inconsistent), unconfirmedLedger = Number(row.unconfirmedLedger), unconfirmedCallbacks = Number(row.unconfirmedCallbacks), paidWithoutConfirmation = Number(row.paidWithoutConfirmation);
   const intentPaidWithoutConfirmation = Number(row.intentPaidWithoutConfirmation), paidWithoutIntent = Number(row.paidWithoutIntent);
   if (![confirmed, inconsistent, unconfirmedLedger, unconfirmedCallbacks, paidWithoutConfirmation, intentPaidWithoutConfirmation, paidWithoutIntent].every(Number.isSafeInteger)) throw new Error("payment confirmation audit count exceeds safe integer range");
-  return { confirmed, inconsistent, unconfirmedLedger, unconfirmedCallbacks, paidWithoutConfirmation, intentPaidWithoutConfirmation, paidWithoutIntent };
+  const balanceAudit = auditBalanceTransfers(db);
+  const subscriptions = auditInvoiceSubscriptionCharges(db);
+  return { confirmed, inconsistent: inconsistent + balanceAudit.inconsistent + subscriptions.inconsistent, unconfirmedLedger: unconfirmedLedger + balanceAudit.orphanDebits + subscriptions.orphanCharges, unconfirmedCallbacks, paidWithoutConfirmation, intentPaidWithoutConfirmation, paidWithoutIntent };
 }

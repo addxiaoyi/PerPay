@@ -27,14 +27,14 @@ export class EPayCallbackScheduler {
     this.#onError = options.onError;
   }
 
-  start(): Promise<number> {
+  start(options: { background?: boolean } = {}): Promise<number> {
     if (this.#stopped) return Promise.reject(new Error("callback scheduler is stopped"));
     if (this.#timer) return this.trigger();
     const timer = setInterval(() => { void this.trigger().catch((error: unknown) => this.#onError(error)); }, this.#interval);
     timer.unref();
     this.#timer = timer;
     return this.trigger().catch((error: unknown) => {
-      if (this.#timer === timer) {
+      if (!options.background && this.#timer === timer) {
         clearInterval(timer);
         this.#timer = null;
       }

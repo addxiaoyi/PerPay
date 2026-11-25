@@ -1,0 +1,85 @@
+{
+  "createdOn": "2026-11-25",
+  "status": "reviewed_candidate_deployment_is_separate",
+  "baseline": {
+    "src/modules/payment/routes.js": "90d9d556c24000e4c5ce7bef7bc1dc5839f339c4ebc75a38dd749184c4e18d4c",
+    "src/persist.js": "f2a97e754530b49ed062773e8676e7f8cb029335ad3708e0ba4c620aac28f6b4",
+    "src/server.js": "e04df3ccf740ec1829e881cbae74565c6a73fa71e9a2f812d3267dcc60c622a6"
+  },
+  "overlay": {
+    "src/modules/payment/routes.js": "8f6b89100e3cfc7c284f8f8a034abc7c416aef86d1f0cc39df333513c27e7f98",
+    "server-injection.json": "6237db58784796203cebf12e95789270ca906f7e1f30aebd0340cb294b8514b5",
+    "src/persist.js": "856406bd4a44b24dbbee48bd178ddcac51a1b76115f771deb49b25994a695179"
+  },
+  "verification": {
+    "newPaymentChecks": 19,
+    "combinedTests": 45,
+    "passed": 43,
+    "skippedOnWindows": 2,
+    "failed": 0,
+    "usesRealProductionMatchedRouteAndPersistence": true,
+    "outboundNetworkAllowed": false,
+    "realFinancialWrites": 0,
+    "newPersistenceChecks": 8,
+    "candidateChecks": 27,
+    "ordinaryWritesUseAsyncIo": true,
+    "financialFlushWaitsForOrdinaryWrite": true,
+    "candidateRouterAndPersistenceLocalPassed": 27,
+    "financialVisibilityBarrier": true,
+    "workerContinuationBarrier": true
+  },
+  "coverage": [
+    "concurrent_duplicate_confirmations",
+    "sigkill_after_commit_before_ack",
+    "persistence_failure_retry",
+    "unconfigured_writer",
+    "invalid_bridge_credentials_amount_channel",
+    "refunded_order_late_notification",
+    "durable_order_creation_and_restart_retry",
+    "changed_retry_parameters",
+    "signed_epay_order_retry",
+    "signed_wechat_notification_and_storage_failure",
+    "asynchronous_ordinary_write",
+    "dirty_generation_during_inflight_write",
+    "financial_flush_waits_for_older_snapshot",
+    "async_fsync_failure_and_retry",
+    "external_change_during_async_write",
+    "exclusive_async_temp_create",
+    "orphaned_temp_ignored_on_reload"
+  ],
+  "notCovered": [
+    "third_party_merchant_business_database_or_fulfillment",
+    "live_production_payment",
+    "live_refund",
+    "production_deployment"
+  ],
+  "originalTestSourceHashes": {
+    "tests/merchant-automation.test.js": "bd7d50f3ed2821193d3d09e1ac892db318ee6e403871c60c9974193fe77fc861",
+    "tests/merchant-automation-persist.test.js": "5149437c2af82c7468024903acf207a51d575fbcb9c51c2781e61502a202bc3a"
+  },
+  "limitations": [
+    "JSON.stringify remains synchronous",
+    "final conflict check and atomic rename are synchronous metadata operations",
+    "POSIX-only directory durability and permissions were not executed on Windows"
+  ],
+  "reviewFixes": [
+    "signed snapshots and financial reads reject uncommitted revisions",
+    "worker dispatch and continuations defer while financial revisions are uncommitted",
+    "older late successes do not release newer failed revisions",
+    "financial responses capture their own committed view",
+    "late channel responses do not reset paid orders"
+  ],
+  "packaging": {
+    "testCommand": "npm run test:starmc",
+    "supportFiles": {
+      "support/src/modules/payment/migration-snapshot.js": "18f2d15543a4db5ea7efc82e84fed6c1c3caed7dd69c4d08b86416c88d53ce0f",
+      "support/src/services/storeBackups.js": "bb921b8844d0e1446b9a8ce9401885d9f2d59a3d9791e4a22dcd487fa48889b7",
+      "support/src/utils/permission.js": "8d2bdb8c8434bc5f820815d71e9519322854e8ef26d4b04d510a1cb1bedcc9ca"
+    },
+    "testFiles": {
+      "tests/merchant-automation-persist.test.js": "283e8aa612904e1e94214d446f9348e1f197fb02a2f4a3985411f983e7dcb69b",
+      "tests/merchant-automation.test.js": "a20fd2102279c38522a0f1805f50612c9cd0ffe34078a6fe7b57584b06a4cc0b",
+      "tests/persist-conflict.test.js": "567885ec76239ed5b206659b273ede6938b7a9829d1691a925f024b1b31e2682"
+    }
+  }
+}
